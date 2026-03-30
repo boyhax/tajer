@@ -149,6 +149,75 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "productId"]
+    },
+    "Region": {
+      "title": "Region",
+      "description": "A geographical area for delivery.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["geozone", "rectangle"] },
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "lat": { "type": "number" },
+              "lng": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "coordinates"]
+    },
+    "DeliveryMethod": {
+      "title": "DeliveryMethod",
+      "description": "A method for delivering products with a cost matrix.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "priceMatrix": {
+          "type": "object",
+          "description": "Mapping from source region to destination region with a cost."
+        },
+        "isDefault": { "type": "boolean" },
+        "isPublished": { "type": "boolean" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "priceMatrix", "isDefault", "isPublished", "categories"]
+    },
+    "Tag": {
+      "title": "Tag",
+      "description": "A tag for categorizing products.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "isPromoted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "isPublic"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings.",
+      "type": "object",
+      "properties": {
+        "paymentMethods": {
+          "type": "object",
+          "properties": {
+            "cod": { "type": "boolean" },
+            "online": { "type": "boolean" }
+          }
+        },
+        "maintenanceMode": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
@@ -179,6 +248,22 @@
     "/wishlist/{wishlistId}": {
       "schema": "WishlistItem",
       "description": "Collection of all wishlist items."
+    },
+    "/regions/{regionId}": {
+      "schema": "Region",
+      "description": "Collection of all regions."
+    },
+    "/deliveryMethods/{deliveryMethodId}": {
+      "schema": "DeliveryMethod",
+      "description": "Collection of all delivery methods."
+    },
+    "/tags/{tagId}": {
+      "schema": "Tag",
+      "description": "Collection of product tags."
+    },
+    "/settings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Global settings documents."
     }
   }
 }

@@ -160,6 +160,29 @@ export interface WishlistItem {
   createdAt: any;
 }
 
+export interface Region {
+  id: string;
+  name: string;
+  type: 'geozone' | 'rectangle';
+  coordinates: { lat: number; lng: number }[]; // For geozone (polygon) or rectangle (bounds)
+  createdAt: any;
+}
+
+export interface DeliveryMethod {
+  id: string;
+  name: string;
+  description: string;
+  priceMatrix: {
+    [sourceRegionId: string]: {
+      [destinationRegionId: string]: number;
+    };
+  };
+  isDefault: boolean;
+  isPublished: boolean;
+  categories: string[]; // Array of category IDs
+  createdAt: any;
+}
+
 export interface AppSettings {
   paymentMethods: {
     online: boolean;

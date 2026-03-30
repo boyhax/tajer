@@ -27,7 +27,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag } from './types';
+import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod } from './types';
 
 enum OperationType {
   CREATE = 'create',
@@ -134,7 +134,7 @@ import {
   Cookie
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
 import L from 'leaflet';
 
 // Fix Leaflet marker icon issue
@@ -150,6 +150,8 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 import { uploadImage, STORAGE_PATHS } from './lib/storage';
+import { useRegions } from './hooks/useRegions';
+import { useDeliveryMethods } from './hooks/useDeliveryMethods';
 
 // --- Contexts ---
 const LanguageContext = createContext<{
@@ -855,20 +857,20 @@ const ProductCard = ({
 
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="font-black text-sm md:text-base tracking-tighter">{product.price}</span>
-              <span className="text-[7px] md:text-[8px] font-black text-white/60 uppercase tracking-widest">{t(config.currency.symbol)}</span>
+              <span className="font-black text-lg md:text-2xl tracking-tighter">{product.price}</span>
+              <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase tracking-widest">{t(config.currency.symbol)}</span>
             </div>
 
-            <div className="flex items-center gap-1 md:gap-2 text-[7px] md:text-[8px] font-black uppercase tracking-widest">
+            <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest">
               {product.rating && (
                 <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
-                  <Star className="w-2 h-2 md:w-2.5 md:h-2.5 text-amber-400 fill-current" />
+                  <Star className="w-2.5 h-2.5 md:w-3 md:h-3 text-amber-400 fill-current" />
                   <span>{product.rating}</span>
                 </div>
               )}
               {product.deliveryTime && (
                 <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
-                  <Clock className="w-2 h-2 md:w-2.5 md:h-2.5" />
+                  <Clock className="w-2.5 h-2.5 md:w-3 md:h-3" />
                   <span>{product.deliveryTime}m</span>
                 </div>
               )}
@@ -884,7 +886,7 @@ const ProductCard = ({
           }}
           className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-8 h-8 md:w-10 md:h-10 bg-emerald-500 text-white rounded-lg md:rounded-xl flex items-center justify-center shadow-2xl hover:bg-emerald-600 hover:scale-110 active:scale-95 transition-all z-20 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
         >
-          <Plus className="w-5 h-5 md:w-6 md:h-6" />
+          <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
         </button>
       </motion.div>
     );
@@ -911,8 +913,8 @@ const ProductCard = ({
         <div className="absolute bottom-0 left-0 right-0 p-1.5 md:p-2 text-white">
           <h4 className="text-[9px] md:text-[10px] font-black truncate tracking-tight">{t(product.locals.name)}</h4>
           <div className="flex items-center gap-1">
-            <span className="text-[9px] md:text-[10px] font-black">{product.price}</span>
-            <span className="text-[6px] md:text-[7px] font-bold text-white/60 uppercase">{t(config.currency.symbol)}</span>
+            <span className="text-[11px] md:text-[13px] font-black">{product.price}</span>
+            <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(config.currency.symbol)}</span>
           </div>
         </div>
 
@@ -923,7 +925,7 @@ const ProductCard = ({
           }}
           className="absolute top-1.5 right-1.5 md:top-2 md:right-2 w-6 h-6 md:w-7 md:h-7 bg-white/20 backdrop-blur-md text-white rounded-lg flex items-center justify-center shadow-lg hover:bg-emerald-500 transition-colors z-10"
         >
-          <Plus className="w-3 h-3 md:w-4 md:h-4" />
+          <ShoppingCart className="w-3 h-3 md:w-4 md:h-4" />
         </button>
       </motion.div>
     );
@@ -948,7 +950,7 @@ const ProductCard = ({
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
       
       <div className="absolute top-2 right-2 md:top-3 md:right-3 flex flex-col gap-1 md:gap-2 z-10">
-        <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[7px] md:text-[8px] font-black text-white shadow-xl tracking-widest">
+        <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-[14px] font-black text-white shadow-xl tracking-widest">
           {product.price} {t(config.currency.symbol)}
         </div>
         {user && (
@@ -972,6 +974,17 @@ const ProductCard = ({
         <h3 className="font-black text-xs md:text-sm tracking-tighter line-clamp-1">{t(product.locals.name)}</h3>
         <p className="text-white/60 text-[7px] md:text-[8px] font-bold uppercase tracking-widest">{product.brand}</p>
       </div>
+
+      {/* Quick Add Button */}
+      <button 
+        onClick={(e) => {
+          e.stopPropagation();
+          addToCart(product);
+        }}
+        className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-8 h-8 md:w-10 md:h-10 bg-white text-black rounded-full flex items-center justify-center shadow-xl hover:bg-emerald-500 hover:text-white transition-all z-20 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+      >
+        <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
+      </button>
     </motion.div>
   );
 };
@@ -3184,6 +3197,349 @@ const DriverDashboard = () => {
   );
 };
 
+const RegionsManagement = () => {
+  const { t, lang } = useContext(LanguageContext);
+  const { regions, addRegion, updateRegion, deleteRegion } = useRegions();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<Region | null>(null);
+  const [newRegion, setNewRegion] = useState<Partial<Region>>({ name: '', type: 'geozone', coordinates: [] });
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+
+  const MapEvents = () => {
+    useMapEvents({
+      click(e) {
+        if (newRegion.type === 'rectangle' && newRegion.coordinates?.length === 2) {
+          setNewRegion({ ...newRegion, coordinates: [e.latlng] });
+        } else {
+          setNewRegion({ ...newRegion, coordinates: [...(newRegion.coordinates || []), e.latlng] });
+        }
+      },
+    });
+    return (
+      <>
+        {newRegion.coordinates?.map((c, i) => (
+          <Marker key={i} position={c} />
+        ))}
+        {newRegion.type === 'geozone' && newRegion.coordinates && newRegion.coordinates.length > 2 && (
+          <Polygon positions={newRegion.coordinates as any} color="emerald" />
+        )}
+        {newRegion.type === 'rectangle' && newRegion.coordinates && newRegion.coordinates.length === 2 && (
+          <Rectangle bounds={newRegion.coordinates as any} color="emerald" />
+        )}
+      </>
+    );
+  };
+
+  const handleSave = async () => {
+    if (!newRegion.name || !newRegion.coordinates?.length) return;
+    try {
+      if (editing) {
+        await updateRegion(editing.id, newRegion);
+      } else {
+        await addRegion(newRegion as any);
+      }
+      setShowAdd(false);
+      setEditing(null);
+      setNewRegion({ name: '', type: 'geozone', coordinates: [] });
+    } catch (error) {
+      alert('Error saving region');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">{t({ en: 'Regions Management', ar: 'إدارة المناطق' })}</h2>
+        <button 
+          onClick={() => {
+            setEditing(null);
+            setNewRegion({ name: '', type: 'geozone', coordinates: [] });
+            setShowAdd(true);
+          }}
+          className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          {t({ en: 'Add Region', ar: 'إضافة منطقة' })}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 space-y-4 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Region Name', ar: 'اسم المنطقة' })}</label>
+              <input 
+                type="text" value={newRegion.name} onChange={(e) => setNewRegion({ ...newRegion, name: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Type', ar: 'النوع' })}</label>
+              <select 
+                value={newRegion.type} onChange={(e) => setNewRegion({ ...newRegion, type: e.target.value as any, coordinates: [] })}
+                className="w-full px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+              >
+                <option value="geozone">{t({ en: 'Geozone (Polygon)', ar: 'منطقة جغرافية (مضلع)' })}</option>
+                <option value="rectangle">{t({ en: 'Rectangle (Bounds)', ar: 'مستطيل (حدود)' })}</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="h-80 rounded-2xl overflow-hidden border border-gray-100">
+            <MapContainer 
+              center={config.map.defaultCenter} 
+              zoom={config.map.defaultZoom} 
+              style={{ height: '100%', width: '100%' }}
+              ref={setMapInstance}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <MapEvents />
+            </MapContainer>
+          </div>
+          <p className="text-xs text-gray-400">{t({ en: 'Click on map to add points. Rectangle needs 2 points.', ar: 'اضغط على الخريطة لإضافة نقاط. المستطيل يحتاج نقطتين.' })}</p>
+
+          <div className="flex gap-4">
+            <button onClick={() => setShowAdd(false)} className="flex-1 py-3 bg-gray-100 rounded-2xl text-sm font-bold">{t({ en: 'Cancel', ar: 'إلغاء' })}</button>
+            <button onClick={handleSave} className="flex-1 py-3 bg-black text-white rounded-2xl text-sm font-bold">{t({ en: 'Save', ar: 'حفظ' })}</button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {regions.map(region => (
+          <div key={region.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center">
+            <div>
+              <h3 className="font-bold">{region.name}</h3>
+              <p className="text-xs text-gray-400 uppercase font-medium">{region.type}</p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => {
+                  setEditing(region);
+                  setNewRegion(region);
+                  setShowAdd(true);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <Settings className="w-4 h-4 text-gray-400" />
+              </button>
+              <button onClick={() => deleteRegion(region.id)} className="p-2 hover:bg-red-50 rounded-full transition-colors">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) => {
+  const { t, lang } = useContext(LanguageContext);
+  const { regions } = useRegions();
+  const { deliveryMethods, addDeliveryMethod, updateDeliveryMethod, deleteDeliveryMethod, setDefaultMethod } = useDeliveryMethods();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<DeliveryMethod | null>(null);
+  const [newMethod, setNewMethod] = useState<Partial<DeliveryMethod>>({
+    name: '', description: '', isDefault: false, isPublished: true, categories: [], priceMatrix: {}
+  });
+
+  const handleSave = async () => {
+    if (!newMethod.name) return;
+    try {
+      if (editing) {
+        await updateDeliveryMethod(editing.id, newMethod);
+      } else {
+        await addDeliveryMethod(newMethod as any);
+      }
+      setShowAdd(false);
+      setEditing(null);
+      setNewMethod({ name: '', description: '', isDefault: false, isPublished: true, categories: [], priceMatrix: {} });
+    } catch (error) {
+      alert('Error saving delivery method');
+    }
+  };
+
+  const updatePrice = (sourceId: string, destId: string, price: number) => {
+    const matrix = { ...(newMethod.priceMatrix || {}) };
+    if (!matrix[sourceId]) matrix[sourceId] = {};
+    matrix[sourceId][destId] = price;
+    setNewMethod({ ...newMethod, priceMatrix: matrix });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">{t({ en: 'Delivery Methods', ar: 'طرق التوصيل' })}</h2>
+        <button 
+          onClick={() => {
+            setEditing(null);
+            setNewMethod({ name: '', description: '', isDefault: false, isPublished: true, categories: [], priceMatrix: {} });
+            setShowAdd(true);
+          }}
+          className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          {t({ en: 'Add Method', ar: 'إضافة طريقة' })}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 space-y-6 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Method Name', ar: 'اسم الطريقة' })}</label>
+              <input 
+                type="text" value={newMethod.name} onChange={(e) => setNewMethod({ ...newMethod, name: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Description', ar: 'الوصف' })}</label>
+              <input 
+                type="text" value={newMethod.description} onChange={(e) => setNewMethod({ ...newMethod, description: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Applicable Categories', ar: 'الأقسام المطبقة' })}</label>
+            <div className="flex flex-wrap gap-2">
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    const cats = [...(newMethod.categories || [])];
+                    if (cats.includes(cat.id)) {
+                      setNewMethod({ ...newMethod, categories: cats.filter(id => id !== cat.id) });
+                    } else {
+                      setNewMethod({ ...newMethod, categories: [...cats, cat.id] });
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                    newMethod.categories?.includes(cat.id) ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {t(cat.locals.title)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase mb-4">{t({ en: 'Price Matrix (Source to Destination)', ar: 'مصفوفة الأسعار (من المصدر إلى الوجهة)' })}</label>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="p-2 border-b text-left">{t({ en: 'From \\ To', ar: 'من \\ إلى' })}</th>
+                    {regions.map(r => <th key={r.id} className="p-2 border-b text-center">{r.name}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {regions.map(source => (
+                    <tr key={source.id}>
+                      <td className="p-2 border-b font-bold">{source.name}</td>
+                      {regions.map(dest => (
+                        <td key={dest.id} className="p-2 border-b text-center">
+                          <input 
+                            type="number" 
+                            value={newMethod.priceMatrix?.[source.id]?.[dest.id] || 0}
+                            onChange={(e) => updatePrice(source.id, dest.id, parseFloat(e.target.value))}
+                            className="w-20 px-2 py-1 bg-gray-50 rounded-lg text-center outline-none focus:ring-2 focus:ring-black"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" checked={newMethod.isPublished} onChange={(e) => setNewMethod({ ...newMethod, isPublished: e.target.checked })}
+                className="w-4 h-4 accent-black"
+              />
+              <span className="text-sm font-bold">{t({ en: 'Published', ar: 'منشور' })}</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" checked={newMethod.isDefault} onChange={(e) => setNewMethod({ ...newMethod, isDefault: e.target.checked })}
+                className="w-4 h-4 accent-black"
+              />
+              <span className="text-sm font-bold">{t({ en: 'Default Method', ar: 'الطريقة الافتراضية' })}</span>
+            </label>
+          </div>
+
+          <div className="flex gap-4">
+            <button onClick={() => setShowAdd(false)} className="flex-1 py-3 bg-gray-100 rounded-2xl text-sm font-bold">{t({ en: 'Cancel', ar: 'إلغاء' })}</button>
+            <button onClick={handleSave} className="flex-1 py-3 bg-black text-white rounded-2xl text-sm font-bold">{t({ en: 'Save', ar: 'حفظ' })}</button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {deliveryMethods.map(method => (
+          <div key={method.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${method.isPublished ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>
+                <Truck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-lg">{method.name}</h3>
+                  {method.isDefault && <span className="px-2 py-0.5 bg-black text-white text-[10px] font-bold rounded-full uppercase">{t({ en: 'Default', ar: 'افتراضي' })}</span>}
+                </div>
+                <p className="text-sm text-gray-500">{method.description}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {method.categories.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    return cat ? (
+                      <span key={catId} className="px-2 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-lg border border-gray-100">
+                        {t(cat.locals.title)}
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {method.categories.length} {t({ en: 'categories', ar: 'أقسام' })} • {Object.keys(method.priceMatrix).length} {t({ en: 'regions', ar: 'مناطق' })}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {!method.isDefault && (
+                <button 
+                  onClick={() => setDefaultMethod(method.id)}
+                  className="px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-full text-xs font-bold transition-all"
+                >
+                  {t({ en: 'Set Default', ar: 'تعيين كافتراضي' })}
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  setEditing(method);
+                  setNewMethod(method);
+                  setShowAdd(true);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <Settings className="w-5 h-5 text-gray-400" />
+              </button>
+              <button onClick={() => deleteDeliveryMethod(method.id)} className="p-2 hover:bg-red-50 rounded-full transition-colors">
+                <Trash2 className="w-5 h-5 text-red-400" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const AdminPanel = () => {
   const { t } = useContext(LanguageContext);
   const { profile, user } = useContext(AuthContext);
@@ -3195,7 +3551,7 @@ const AdminPanel = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
   const [tags, setTags] = useState<Tag[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings' | 'regions' | 'delivery-methods'>('products');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [adminMessage, setAdminMessage] = useState('');
@@ -4072,6 +4428,8 @@ const AdminPanel = () => {
           { id: 'drivers', label: t({ en: 'Drivers', ar: 'السائقين' }), icon: Car },
           { id: 'orders', label: t({ en: 'Orders', ar: 'الطلبات' }), icon: ShoppingBag },
           { id: 'users', label: t({ en: 'Users', ar: 'المستخدمين' }), icon: Users },
+          { id: 'regions', label: t({ en: 'Regions', ar: 'المناطق' }), icon: MapPin },
+          { id: 'delivery-methods', label: t({ en: 'Delivery', ar: 'التوصيل' }), icon: Truck },
           { id: 'promotions', label: t({ en: 'Promotions', ar: 'العروض' }), icon: Bell },
           { id: 'app-settings', label: t({ en: 'App Settings', ar: 'إعدادات التطبيق' }), icon: Settings }
         ].map(tab => (
@@ -4920,6 +5278,9 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
+
+      {activeSubTab === 'regions' && <RegionsManagement />}
+      {activeSubTab === 'delivery-methods' && <DeliveryMethodsManagement categories={categories} />}
 
       {activeSubTab === 'drivers' && (
         <div className="space-y-6">

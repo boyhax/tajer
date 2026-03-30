@@ -13,4 +13,5 @@ export const STORAGE_PATHS = {
   CATEGORIES: 'categories',
   TAGS: 'tags',
   STORES: 'stores',
+  BANNERS: 'banners',
 };
