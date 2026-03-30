@@ -1,109 +1,59 @@
-import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
-import axios from "axios";
-import dotenv from "dotenv";
+import { Hono } from 'hono';
+import { getRequestListener, serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
+import { createServer as createViteServer } from 'vite';
+import { createServer as createHttpServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import dotenv from 'dotenv';
+import { validateEnv, Env } from './lib/Env.js';
+import { ordersRouter } from './server/routes/orders.js';
 
 dotenv.config();
+validateEnv();
+
+const app = new Hono();
+
+app.get('/api/health', (c) => c.json({ status: 'ok' }));
+app.route('/api/order', ordersRouter);
 
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  const PORT = Env.PORT;
 
-  app.use(express.json());
-
-  // MyFatoorah API Configuration
-  const MYFATOORAH_API_URL = "https://apitest.myfatoorah.com"; // Use demo URL for now
-  const MYFATOORAH_TOKEN = process.env.MYFATOORAH_API_KEY;
-
-  // API Routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-  });
-
-  // Initiate Payment
-  app.post("/api/payment/initiate", async (req, res) => {
-    try {
-      const { amount, currency, customerName, customerEmail, orderId } = req.body;
-
-      if (!MYFATOORAH_TOKEN) {
-        return res.status(500).json({ error: "MyFatoorah API key is missing" });
-      }
-
-      const response = await axios.post(
-        `${MYFATOORAH_API_URL}/v2/ExecutePayment`,
-        {
-          PaymentMethodId: 2, // KNET or other method
-          CustomerName: customerName,
-          DisplayCurrencyIso: currency || "OMR",
-          MobileCountryCode: "968",
-          CustomerMobile: "12345678",
-          CustomerEmail: customerEmail,
-          InvoiceValue: amount,
-          CallBackUrl: `${process.env.APP_URL}/payment/success?orderId=${orderId}`,
-          ErrorUrl: `${process.env.APP_URL}/payment/fail?orderId=${orderId}`,
-          Language: "en",
-          CustomerReference: orderId,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${MYFATOORAH_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      res.json(response.data);
-    } catch (error: any) {
-      console.error("MyFatoorah Error:", error.response?.data || error.message);
-      res.status(500).json({ error: error.response?.data || error.message });
-    }
-  });
-
-  // Verify Payment
-  app.get("/api/payment/verify", async (req, res) => {
-    try {
-      const { paymentId } = req.query;
-
-      const response = await axios.post(
-        `${MYFATOORAH_API_URL}/v2/GetPaymentStatus`,
-        {
-          Key: paymentId,
-          KeyType: "PaymentId",
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${MYFATOORAH_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      res.json(response.data);
-    } catch (error: any) {
-      console.error("Verification Error:", error.response?.data || error.message);
-      res.status(500).json({ error: error.response?.data || error.message });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (Env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
-    app.use(vite.middlewares);
+
+    // API requests → Hono, everything else → Vite dev middleware
+    const honoHandler = getRequestListener(app.fetch);
+    const server = createHttpServer((req, res) => {
+      if (req.url?.startsWith('/api/')) {
+        honoHandler(req, res);
+      } else {
+        vite.middlewares(req, res, () => res.end());
+      }
+    });
+
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.use('*', serveStatic({ root: './dist' }));
+    app.get('*', async (c) => {
+      const html = await readFile(
+        path.join(process.cwd(), 'dist', 'index.html'),
+        'utf-8',
+      );
+      return c.html(html);
+    });
+
+    serve({ fetch: app.fetch, port: PORT, hostname: '0.0.0.0' }, (info) => {
+      console.log(`Server running on http://localhost:${info.port}`);
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 startServer();
+

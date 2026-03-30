@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -28,57 +28,20 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod } from './types';
+import { OperationType, handleFirestoreError } from './services/firebaseService';
+import {
+  AppProviders,
+  LanguageContext, useLanguage,
+  CartContext, useCart,
+  AuthContext, useAuth,
+  NotificationContext, useNotifications,
+  WishlistContext,
+  LocationContext,
+  useCatalog,
+} from './contexts';
+import { CheckoutPage } from './pages/CheckoutPage';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
 
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 import { config } from './lib/config';
 import * as LucideIcons from 'lucide-react';
 import { 
@@ -151,140 +114,12 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 import { uploadImage, STORAGE_PATHS } from './lib/storage';
-import { useRegions } from './hooks/useRegions';
-import { useDeliveryMethods } from './hooks/useDeliveryMethods';
+import { useRegions, RegionsProvider } from './hooks/useRegions';
+import { useDeliveryMethods, DeliveryMethodsProvider } from './hooks/useDeliveryMethods';
 
-// --- Contexts ---
-const LanguageContext = createContext<{
-  lang: 'en' | 'ar';
-  setLang: (l: 'en' | 'ar') => void;
-  t: (ls: LocalizedString | string | any) => string;
-}>({ lang: 'en', setLang: () => {}, t: (ls) => typeof ls === 'string' ? ls : (ls?.en || '') });
 
-const CartContext = createContext<{
-  cart: CartItem[];
-  addToCart: (product: Product) => void;
-  removeFromCart: (productId: string) => void;
-  clearCart: () => void;
-  total: number;
-}>({ cart: [], addToCart: () => {}, removeFromCart: () => {}, clearCart: () => {}, total: 0 });
 
-const AuthContext = createContext<{
-  user: User | null;
-  profile: UserProfile | null;
-  loading: boolean;
-  signIn: () => Promise<void>;
-  signInWithPhone: (phoneNumber: string, verifier?: RecaptchaVerifier) => Promise<void>;
-  verifyCode: (code: string) => Promise<void>;
-  logout: () => Promise<void>;
-}>({ 
-  user: null, 
-  profile: null, 
-  loading: true, 
-  signIn: async () => {}, 
-  signInWithPhone: async (phoneNumber: string, verifier?: RecaptchaVerifier) => {}, 
-  verifyCode: async () => {}, 
-  logout: async () => {},
-  updateProfile: async () => {}
-});
 
-const NotificationContext = createContext<{
-  notifications: AppNotification[];
-  unreadCount: number;
-  markAsRead: (id: string) => Promise<void>;
-  markAllAsRead: () => Promise<void>;
-  requestPermission: () => Promise<void>;
-}>({
-  notifications: [],
-  unreadCount: 0,
-  markAsRead: async () => {},
-  markAllAsRead: async () => {},
-  requestPermission: async () => {}
-});
-
-const WishlistContext = createContext<{
-  wishlist: string[];
-  toggleWishlist: (productId: string) => Promise<void>;
-  isInWishlist: (productId: string) => boolean;
-}>({ wishlist: [], toggleWishlist: async () => {}, isInWishlist: () => false });
-
-const LocationContext = createContext<{
-  location: { lat: number; lng: number } | null;
-  setLocation: (loc: { lat: number; lng: number }) => void;
-  address: string;
-  setAddress: (addr: string) => void;
-}>({ location: null, setLocation: () => {}, address: '', setAddress: () => {} });
-
-const LocationProvider = ({ children }: { children: React.ReactNode }) => {
-  const [location, setLocationState] = useState<{ lat: number; lng: number } | null>(() => {
-    const saved = localStorage.getItem('kuzama_location');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [address, setAddressState] = useState(() => localStorage.getItem('kuzama_address') || '');
-
-  const setLocation = (loc: { lat: number; lng: number }) => {
-    setLocationState(loc);
-    localStorage.setItem('kuzama_location', JSON.stringify(loc));
-  };
-
-  const setAddress = (addr: string) => {
-    setAddressState(addr);
-    localStorage.setItem('kuzama_address', addr);
-  };
-
-  return (
-    <LocationContext.Provider value={{ location, setLocation, address, setAddress }}>
-      {children}
-    </LocationContext.Provider>
-  );
-};
-
-const WishlistProvider = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useContext(AuthContext);
-  const [wishlist, setWishlist] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!user) {
-      setWishlist([]);
-      return;
-    }
-
-    const q = query(collection(db, 'wishlist'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setWishlist(snap.docs.map(doc => doc.data().productId));
-    });
-    return unsub;
-  }, [user]);
-
-  const toggleWishlist = async (productId: string) => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'wishlist'), 
-      where('userId', '==', user.uid), 
-      where('productId', '==', productId)
-    );
-    const snap = await getDocs(q);
-
-    if (snap.empty) {
-      await addDoc(collection(db, 'wishlist'), {
-        userId: user.uid,
-        productId,
-        createdAt: serverTimestamp()
-      });
-    } else {
-      await deleteDoc(doc(db, 'wishlist', snap.docs[0].id));
-    }
-  };
-
-  const isInWishlist = (productId: string) => wishlist.includes(productId);
-
-  return (
-    <WishlistContext.Provider value={{ wishlist, toggleWishlist, isInWishlist }}>
-      {children}
-    </WishlistContext.Provider>
-  );
-};
 
 const NotificationCenter = ({ onClose }: { onClose: () => void }) => {
   const { notifications, markAsRead, markAllAsRead, unreadCount } = useContext(NotificationContext);
@@ -1491,226 +1326,6 @@ const AddressDrawer = ({
         </div>
       )}
     </AnimatePresence>
-  );
-};
-
-const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void }) => {
-  const { cart, total, clearCart } = useContext(CartContext);
-  const { user, profile } = useContext(AuthContext);
-  const { t } = useContext(LanguageContext);
-  const { location: savedLocation, address: savedAddress } = useContext(LocationContext);
-  const [loading, setLoading] = useState(false);
-  const [address, setAddress] = useState(savedAddress || profile?.address || '');
-  const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(savedLocation || profile?.defaultLocation || null);
-  const [isAddressDrawerOpen, setIsAddressDrawerOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
-
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
-      if (snap.exists()) {
-        const settings = snap.data() as AppSettings;
-        setAppSettings(settings);
-        if (!settings.paymentMethods.online && settings.paymentMethods.cod) {
-          setPaymentMethod('cod');
-        }
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/app'));
-    return unsub;
-  }, []);
-
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const { latitude, longitude } = pos.coords;
-        setCoords({ lat: latitude, lng: longitude });
-        reverseGeocode(latitude, longitude);
-        alert(t({ en: 'Location captured!', ar: 'تم تحديد الموقع!' }));
-      }, (err) => {
-        console.error(err);
-        alert(t({ en: 'Could not get location', ar: 'تعذر الحصول على الموقع' }));
-      });
-    }
-  };
-
-  const reverseGeocode = async (lat: number, lng: number) => {
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
-      const data = await response.json();
-      if (data.display_name) {
-        setAddress(data.display_name);
-      }
-    } catch (error) {
-      console.error('Reverse geocoding failed:', error);
-    }
-  };
-
-  const handlePayment = async () => {
-    if (!user) return alert(t({ en: 'Please sign in to checkout', ar: 'يرجى تسجيل الدخول لإتمام الشراء' }));
-    if (!address) return alert(t({ en: 'Please provide a shipping address', ar: 'يرجى تقديم عنوان الشحن' }));
-
-    setLoading(true);
-    try {
-      // 1. Create Order in Firestore
-      const orderData = {
-        userId: user.uid,
-        items: cart.map(item => ({
-          id: item.id,
-          name: t(item.locals.name),
-          price: item.price,
-          quantity: item.quantity
-        })),
-        totalAmount: total,
-        status: 'pending',
-        paymentMethod,
-        createdAt: serverTimestamp(),
-        customerInfo: {
-          name: user?.displayName || '',
-          email: user?.email || '',
-          address: address,
-          destinationCoords: coords || undefined
-        }
-      };
-      const orderRef = await addDoc(collection(db, 'orders'), orderData);
-      
-      if (paymentMethod === 'cod') {
-        clearCart();
-        onComplete(orderRef.id);
-        return;
-      }
-
-      // 2. Initiate MyFatoorah Payment via Backend
-      const response = await fetch('/api/payment/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: total,
-          currency: config.currency.code,
-          customerName: user?.displayName || '',
-          customerEmail: user?.email || '',
-          orderId: orderRef.id
-        })
-      });
-
-      const data = await response.json();
-      if (data.IsSuccess) {
-        window.location.href = data.Data.PaymentURL;
-      } else {
-        throw new Error(data.Message || 'Payment initiation failed');
-      }
-    } catch (error: any) {
-      console.error(error);
-      alert('Checkout failed: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto p-1 md:p-4">
-      <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
-      <div className="space-y-3 md:space-y-6">
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-3 md:p-6 shadow-sm">
-          <h3 className="font-bold text-sm md:text-lg mb-2 md:mb-4">{t({ en: 'Shipping Information', ar: 'معلومات الشحن' })}</h3>
-          <div className="space-y-2 md:space-y-4">
-            <div>
-              <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Full Name', ar: 'الاسم الكامل' })}</label>
-              <div className="p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm">{user?.displayName}</div>
-            </div>
-            <div className="space-y-2 md:space-y-4">
-              <div className="flex justify-between items-center mb-0.5 md:mb-1">
-                <label className="text-[9px] font-bold uppercase text-gray-400">{t({ en: 'Shipping Address', ar: 'عنوان الشحن' })}</label>
-                <button 
-                  onClick={() => setIsAddressDrawerOpen(true)}
-                  className="text-[8px] md:text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg transition-colors"
-                >
-                  <MapPin className="w-2 h-2 md:w-3 md:h-3" />
-                  {t({ en: 'Change Address', ar: 'تغيير العنوان' })}
-                </button>
-              </div>
-              
-              <div className="p-2.5 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl border border-gray-100">
-                <p className="text-[11px] md:text-sm text-gray-600 leading-relaxed">
-                  {address || t({ en: 'No address selected', ar: 'لم يتم اختيار عنوان' })}
-                </p>
-                {coords && (
-                  <div className="mt-1 md:mt-2 flex items-center gap-1 text-[8px] md:text-[10px] text-emerald-600 font-bold">
-                    <CheckCircle2 className="w-2 h-2 md:w-3 md:h-3" />
-                    {t({ en: 'Precise location set', ar: 'تم تحديد الموقع بدقة' })}
-                  </div>
-                )}
-              </div>
-
-              <AddressDrawer 
-                isOpen={isAddressDrawerOpen}
-                onClose={() => setIsAddressDrawerOpen(false)}
-                initialAddress={address}
-                initialCoords={coords}
-                t={t}
-                onSave={(newAddress, newCoords) => {
-                  setAddress(newAddress);
-                  setCoords(newCoords);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-sm">
-          <h3 className="font-bold text-base md:text-lg mb-3 md:mb-4">{t({ en: 'Payment Method', ar: 'طريقة الدفع' })}</h3>
-          <div className="grid grid-cols-2 gap-3 md:gap-4">
-            {appSettings.paymentMethods.online && (
-              <button 
-                onClick={() => setPaymentMethod('online')}
-                className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 transition-all flex flex-col items-center gap-1.5 md:gap-2 ${
-                  paymentMethod === 'online' ? 'border-black bg-gray-50' : 'border-gray-100'
-                }`}
-              >
-                <CreditCard className="w-5 h-5 md:w-6 md:h-6" />
-                <span className="text-[10px] md:text-xs font-bold">{t({ en: 'Online Payment', ar: 'دفع إلكتروني' })}</span>
-              </button>
-            )}
-            {appSettings.paymentMethods.cod && (
-              <button 
-                onClick={() => setPaymentMethod('cod')}
-                className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 transition-all flex flex-col items-center gap-1.5 md:gap-2 ${
-                  paymentMethod === 'cod' ? 'border-black bg-gray-50' : 'border-gray-100'
-                }`}
-              >
-                <Banknote className="w-5 h-5 md:w-6 md:h-6" />
-                <span className="text-[10px] md:text-xs font-bold">{t({ en: 'Cash on Delivery', ar: 'الدفع عند الاستلام' })}</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-sm">
-          <h3 className="font-bold text-base md:text-lg mb-3 md:mb-4">{t({ en: 'Order Summary', ar: 'ملخص الطلب' })}</h3>
-          <div className="space-y-1.5 md:space-y-2 mb-3 md:mb-4">
-            {cart.map(item => (
-              <div key={item.id} className="flex justify-between text-xs md:text-sm">
-                <span>{t(item.locals.name)} × {item.quantity}</span>
-                <span>{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="border-t pt-3 md:pt-4 flex justify-between items-center">
-            <span className="font-bold text-lg md:text-xl">{t({ en: 'Total', ar: 'المجموع' })}</span>
-            <span className="font-bold text-lg md:text-xl">{total.toFixed(2)} {t(config.currency.symbol)}</span>
-          </div>
-        </div>
-
-        <button 
-          onClick={handlePayment}
-          disabled={loading}
-          className="w-full bg-black text-white py-4 md:py-5 rounded-xl md:rounded-2xl font-bold text-base md:text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2 md:gap-3 disabled:opacity-50"
-        >
-          {loading ? t({ en: 'Processing...', ar: 'جاري المعالجة...' }) : 
-           paymentMethod === 'online' ? t({ en: 'Pay with MyFatoorah', ar: 'الدفع بواسطة MyFatoorah' }) :
-           t({ en: 'Confirm Order (COD)', ar: 'تأكيد الطلب (الدفع عند الاستلام)' })}
-        </button>
-      </div>
-    </div>
   );
 };
 
@@ -3267,10 +2882,11 @@ const RegionsManagement = () => {
   const MapEvents = () => {
     useMapEvents({
       click(e) {
+        const point = { lat: e.latlng.lat, lng: e.latlng.lng };
         if (newRegion.type === 'rectangle' && newRegion.coordinates?.length === 2) {
-          setNewRegion({ ...newRegion, coordinates: [e.latlng] });
+          setNewRegion({ ...newRegion, coordinates: [point] });
         } else {
-          setNewRegion({ ...newRegion, coordinates: [...(newRegion.coordinates || []), e.latlng] });
+          setNewRegion({ ...newRegion, coordinates: [...(newRegion.coordinates || []), point] });
         }
       },
     });
@@ -5758,32 +5374,9 @@ const OrdersPage = () => {
   );
 };
 
-const FilterSidebar = ({ 
-  categories, 
-  brands, 
-  selectedCategoryId, 
-  setSelectedCategoryId, 
-  selectedBrand, 
-  setSelectedBrand, 
-  priceRange, 
-  setPriceRange,
-  tags,
-  selectedTagId,
-  setSelectedTagId
-}: { 
-  categories: Category[], 
-  brands: string[], 
-  selectedCategoryId: string, 
-  setSelectedCategoryId: (c: string) => void, 
-  selectedBrand: string, 
-  setSelectedBrand: (b: string) => void, 
-  priceRange: [number, number], 
-  setPriceRange: (r: [number, number]) => void,
-  tags: Tag[],
-  selectedTagId: string,
-  setSelectedTagId: (id: string) => void
-}) => {
+const FilterSidebar = () => {
   const { t } = useContext(LanguageContext);
+  const { categories, brands, selectedCategoryId, setSelectedCategoryId, selectedBrand, setSelectedBrand, priceRange, setPriceRange, tags, selectedTagId, setSelectedTagId, clearFilters } = useCatalog();
 
   return (
     <div className="w-64 flex-shrink-0 space-y-8 pr-8 border-r border-gray-100 hidden md:block">
@@ -5938,28 +5531,9 @@ const CategoryProducts = ({ categoryId, onSelectProduct }: { categoryId: string,
     </div>
   );
 };
-const FilterDrawer = ({ 
-  onClose,
-  categories,
-  selectedCategoryId,
-  setSelectedCategoryId,
-  sortOption,
-  setSortOption,
-  tags,
-  selectedTagId,
-  setSelectedTagId
-}: { 
-  onClose: () => void;
-  categories: Category[];
-  selectedCategoryId: string;
-  setSelectedCategoryId: (c: string) => void;
-  sortOption: string;
-  setSortOption: (s: string) => void;
-  tags: Tag[];
-  selectedTagId: string;
-  setSelectedTagId: (id: string) => void;
-}) => {
+const FilterDrawer = ({ onClose }: { onClose: () => void }) => {
   const { t, lang } = useContext(LanguageContext);
+  const { categories, selectedCategoryId, setSelectedCategoryId, sortOption, setSortOption, tags, selectedTagId, setSelectedTagId } = useCatalog();
   const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'tags'>('sort');
 
   return (
@@ -6086,253 +5660,37 @@ const FilterDrawer = ({
 
 // --- Main App ---
 
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState<CartItem[]>([]);
+function AppContent() {
+  const { lang, t } = useLanguage();
+  const { user, profile, loading, signIn, signInWithPhone, verifyCode, logout: authLogout } = useAuth();
+  const { cart, addToCart, removeFromCart, clearCart, total } = useCart();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, requestPermission: requestNotificationPermission } = useNotifications();
+  const {
+    products, categories, tags, filteredProducts, brands, featuredCategories,
+    searchQuery, setSearchQuery,
+    selectedCategoryId, setSelectedCategoryId,
+    selectedBrand, setSelectedBrand,
+    selectedTagId, setSelectedTagId,
+    priceRange, setPriceRange,
+    sortOption, setSortOption,
+    clearFilters,
+  } = useCatalog();
   const [currentPage, setCurrentPage] = useState('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [lang, setLangState] = useState<'en' | 'ar'>(() => {
-    const saved = localStorage.getItem('kuzama_lang');
-    return (saved === 'en' || saved === 'ar') ? saved : 'en';
-  });
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [selectedTagId, setSelectedTagId] = useState('');
-
-  const setLang = async (l: 'en' | 'ar') => {
-    setLangState(l);
-    localStorage.setItem('kuzama_lang', l);
-    if (user) {
-      try {
-        await updateDoc(doc(db, 'users', user.uid), { language: l });
-      } catch (error) {
-        console.error('Failed to update language in profile', error);
-      }
-    }
-  };
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('');
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [sortOption, setSortOption] = useState('newest');
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
-  const t = (ls: LocalizedString | string | any) => {
-    if (typeof ls === 'string') return ls;
-    if (!ls) return '';
-    return ls[lang] || ls.en || '';
-  };
-
-  // Derived data
-  const brands: string[] = Array.from(new Set(products.map(p => p.brand)));
-  const featuredCategories = categories.filter(c => c.isFeatured);
-
-  const filteredProducts = products
-    .filter(p => {
-      const name = t(p.locals.name);
-      const brand = p.brand;
-      const description = t(p.locals.description);
-      
-      const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategoryId === '' || p.categories.includes(selectedCategoryId);
-      const matchesBrand = selectedBrand === '' || p.brand === selectedBrand;
-      const matchesPrice = p.price >= priceRange[0] && p.price <= priceRange[1];
-      const matchesTag = selectedTagId === '' || (p.tags && p.tags.includes(selectedTagId));
-      
-      return matchesSearch && matchesCategory && matchesBrand && matchesPrice && matchesTag;
-    })
-    .sort((a, b) => {
-      if (sortOption === 'price-low') return a.price - b.price;
-      if (sortOption === 'price-high') return b.price - a.price;
-      return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
-    });
-
-  // Auth Logic
+  // Navigate to home on logout
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const docRef = doc(db, 'users', u.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const p = docSnap.data() as UserProfile;
-          // Migration: if roles doesn't exist, create it from role
-          if (!p.roles) {
-            p.roles = [p.role || 'customer'];
-            await updateDoc(docRef, { roles: p.roles });
-          }
-          setProfile(p);
-          if (p.language && p.language !== lang) {
-            setLangState(p.language);
-            localStorage.setItem('kuzama_lang', p.language);
-          }
-        } else {
-          const newProfile: UserProfile = {
-            uid: u.uid,
-            email: u.email || '',
-            displayName: u.displayName || '',
-            role: u.email === 'facegoogl@gmail.com' ? 'admin' : 'customer',
-            roles: u.email === 'facegoogl@gmail.com' ? ['admin', 'customer'] : ['customer'],
-            language: lang,
-            createdAt: serverTimestamp()
-          };
-          await setDoc(docRef, newProfile);
-          setProfile(newProfile);
-        }
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-    return unsub;
-  }, []);
-
-  // Fetch Products
-  useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, 'products'), where('status', '==', 'published'), orderBy('createdAt', 'desc')), (snap) => {
-      setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'products'));
-    return unsub;
-  }, []);
-
-  // Fetch Categories
-  useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, 'categories'), orderBy('createdAt', 'desc')), (snap) => {
-      setCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'categories'));
-    return unsub;
-  }, []);
-
-  // Fetch Tags
-  useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, 'tags'), orderBy('createdAt', 'desc')), (snap) => {
-      setTags(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'tags'));
-    return unsub;
-  }, []);
-
-  const signIn = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  };
-
-  const signInWithPhone = async (phoneNumber: string, verifier?: RecaptchaVerifier) => {
-    try {
-      if (!verifier) {
-        throw new Error('Recaptcha verifier not initialized');
-      }
-      const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-      setConfirmationResult(result);
-    } catch (error) {
-      console.error('Phone sign in failed', error);
-      throw error;
+    if (!user && !loading) {
+      setCurrentPage('home');
     }
-  };
+  }, [user, loading]);
 
-  const verifyCode = async (code: string) => {
-    try {
-      if (!confirmationResult) {
-        throw new Error('No confirmation result found. This usually happens if the page was refreshed or the initial phone sign-in attempt failed. Please try sending the code again.');
-      }
-      await confirmationResult.confirm(code);
-      setConfirmationResult(null);
-    } catch (error: any) {
-      console.error('Code verification failed', error);
-      throw error;
-    }
-  };
-
+  // Logout wrapper to also reset navigation
   const logout = async () => {
-    await signOut(auth);
+    await authLogout();
     setCurrentPage('home');
   };
-
-  // Notification Logic
-  useEffect(() => {
-    if (!user) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppNotification));
-      
-      // Check for new notifications to trigger browser alert
-      const prevIds = new Set(notifications.map(n => n.id));
-      const newNotifs = fetched.filter(n => !prevIds.has(n.id) && !n.read);
-      
-      if (newNotifs.length > 0 && Notification.permission === 'granted') {
-        newNotifs.forEach(n => {
-          new Notification(t(n.title), { body: t(n.body) });
-        });
-      }
-
-      setNotifications(fetched);
-      setUnreadCount(fetched.filter(n => !n.read).length);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
-
-    return unsub;
-  }, [user]);
-
-  const markAsRead = async (id: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', id), { read: true });
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const unread = notifications.filter(n => !n.read);
-      await Promise.all(unread.map(n => updateDoc(doc(db, 'notifications', n.id), { read: true })));
-    } catch (error) {
-      console.error('Error marking all as read:', error);
-    }
-  };
-
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        console.log('Notification permission granted.');
-      }
-    }
-  };
-
-  // Cart Logic
-  const addToCart = (product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
-      if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
-      }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-  };
-
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.id !== productId));
-  };
-
-  const clearCart = () => setCart([]);
-
-  const total = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
   // Handle Payment Success Redirect
   useEffect(() => {
@@ -6391,9 +5749,8 @@ export default function App() {
   }
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
-        {profile?.isBanned ? (
+    <>
+      {profile?.isBanned ? (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-center">
             <div className="max-w-md space-y-6">
               <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
@@ -6415,16 +5772,6 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <NotificationContext.Provider value={{ 
-            notifications, 
-            unreadCount, 
-            markAsRead, 
-            markAllAsRead, 
-            requestPermission: requestNotificationPermission 
-          }}>
-          <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, total }}>
-            <LocationProvider>
-              <WishlistProvider>
               <div 
                 className="min-h-screen bg-white font-sans text-black selection:bg-black selection:text-white"
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
@@ -6574,19 +5921,7 @@ export default function App() {
                           )}
 
                           <div className="flex gap-8">
-                            <FilterSidebar 
-                              categories={categories}
-                              brands={brands}
-                              selectedCategoryId={selectedCategoryId}
-                              setSelectedCategoryId={setSelectedCategoryId}
-                              selectedBrand={selectedBrand}
-                              setSelectedBrand={setSelectedBrand}
-                              priceRange={priceRange}
-                              setPriceRange={setPriceRange}
-                              tags={tags}
-                              selectedTagId={selectedTagId}
-                              setSelectedTagId={setSelectedTagId}
-                            />
+                            <FilterSidebar />
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-6">
                                 <div className="flex items-center gap-4">
@@ -6595,13 +5930,7 @@ export default function App() {
                                   </span>
                                   {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
                                     <button 
-                                      onClick={() => {
-                                        setSelectedCategoryId('');
-                                        setSelectedBrand('');
-                                        setSelectedTagId('');
-                                        setSearchQuery('');
-                                        setPriceRange([0, 10000]);
-                                      }}
+                                      onClick={() => clearFilters()}
                                       className="text-xs font-bold text-red-500 hover:underline flex items-center gap-1"
                                     >
                                       <X className="w-3 h-3" />
@@ -6633,7 +5962,7 @@ export default function App() {
                         </div>
                       )}
                       {currentPage === 'cart' && <CartPage onCheckout={() => setCurrentPage('checkout')} />}
-                      {currentPage === 'checkout' && <CheckoutPage onComplete={() => setCurrentPage('orders')} />}
+                      {currentPage === 'checkout' && <CheckoutPage onComplete={(_orderId) => setCurrentPage('orders')} />}
                       {currentPage === 'admin' && <AdminPanel />}
                       {currentPage === 'orders' && <OrdersPage />}
                       {currentPage === 'wishlist' && <WishlistPage onSelectProduct={setSelectedProduct} />}
@@ -6647,14 +5976,6 @@ export default function App() {
                 {showFilterDrawer && (
                   <FilterDrawer 
                     onClose={() => setShowFilterDrawer(false)}
-                    categories={categories}
-                    selectedCategoryId={selectedCategoryId}
-                    setSelectedCategoryId={setSelectedCategoryId}
-                    sortOption={sortOption}
-                    setSortOption={setSortOption}
-                    tags={tags}
-                    selectedTagId={selectedTagId}
-                    setSelectedTagId={setSelectedTagId}
                   />
                 )}
               </AnimatePresence>
@@ -6662,12 +5983,15 @@ export default function App() {
                 <WelcomeModal onClose={() => window.location.reload()} />
               )}
             </div>
-            </WishlistProvider>
-          </LocationProvider>
-          </CartContext.Provider>
-        </NotificationContext.Provider>
         )}
-      </AuthContext.Provider>
-    </LanguageContext.Provider>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProviders>
+      <AppContent />
+    </AppProviders>
   );
 }

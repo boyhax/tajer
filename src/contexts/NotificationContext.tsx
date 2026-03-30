@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { 
   collection, 
   query, 
@@ -12,6 +12,7 @@ import {
 import { db } from '../firebase';
 import { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -71,6 +72,18 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
       await Notification.requestPermission();
     }
   };
+
+  // Trigger a browser notification for each new unread message
+  const { t } = useLanguage();
+  const prevNotifIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const prevIds = prevNotifIdsRef.current;
+    const newNotifs = notifications.filter(n => !prevIds.has(n.id) && !n.read);
+    if (newNotifs.length > 0 && Notification.permission === 'granted') {
+      newNotifs.forEach(n => new Notification(t(n.title), { body: t(n.body) }));
+    }
+    prevNotifIdsRef.current = new Set(notifications.map(n => n.id));
+  }, [notifications]);
 
   return (
     <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, requestPermission }}>
