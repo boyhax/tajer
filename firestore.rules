@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
+         (request.auth.token.email == "facegoogl@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isStore() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'store';
+    }
+
+    function isDriver() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'driver';
+    }
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.brand is string && data.brand.size() > 0 && data.brand.size() < 50 &&
+             data.price is number && data.price >= 0 &&
+             data.categories is list &&
+             data.image is string &&
+             data.storeId is string &&
+             data.locals is map;
+    }
+
+    function isValidCategory(data) {
+      return data.title is string && data.title.size() > 0 &&
+             data.isFeatured is bool &&
+             (data.parentId == null || data.parentId is string) &&
+             data.bannerImageUrl is string &&
+             data.locals is map;
+    }
+
+    function isValidOrder(data) {
+      return data.userId == request.auth.uid &&
+             data.items is list &&
+             data.totalAmount is number &&
+             data.status in ['pending', 'paid', 'failed', 'shipped', 'delivered'];
+    }
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string &&
+             data.role in ['admin', 'customer', 'store', 'driver'];
+    }
+
+    function isValidWishlistItem(data) {
+      return data.userId == request.auth.uid &&
+             data.productId is string && data.productId.size() > 0;
+    }
+
+    // Products: Publicly readable, admin or verified store can write
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if (isAdmin() || (isStore() && request.resource.data.storeId == request.auth.uid)) && isValidProduct(request.resource.data);
+      allow update, delete: if isAdmin() || (isStore() && resource.data.storeId == request.auth.uid && isValidProduct(request.resource.data));
+    }
+
+    // Categories: Publicly readable, only admin can write
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidCategory(request.resource.data);
+    }
+
+    // Orders: Users can read/write their own, admin can read/write all, drivers can read assigned
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin() || 
+                    (isDriver() && resource.data.driverId == request.auth.uid) ||
+                    (isStore() && resource.data.storeId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data);
+      allow update: if isAdmin() || (isDriver() && resource.data.driverId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveryStatus']));
+    }
+
+    // Users: Users can read/write their own, admin can read all
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                              (request.resource.data.role == 'customer' || request.resource.data.role == 'store' || request.resource.data.role == 'driver' || isAdmin());
+    }
+
+    // Stores: Publicly readable, owner or admin can write
+    match /stores/{storeId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.ownerId) || isAdmin();
+    }
+
+    // Drivers: Admin can read/write all, owner can read/write own, authenticated users can read (for assignment)
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Notifications: Users can read/write their own, admin can read/write all
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated(); // Allow system/others to create notifications for users
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Wishlist: Users can only read/write their own
+    match /wishlist/{wishlistId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidWishlistItem(request.resource.data);
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Tags: Publicly readable, only admin can write
+    match /tags/{tagId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Settings: Publicly readable, only admin can write
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

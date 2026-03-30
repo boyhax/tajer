@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "An item available for purchase in the store.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product ID" },
+        "name": { "type": "string", "description": "Name of the product" },
+        "brand": { "type": "string", "description": "Brand of the product" },
+        "description": { "type": "string", "description": "Detailed description" },
+        "price": { "type": "number", "description": "Price in KWD" },
+        "categories": { "type": "array", "items": { "type": "string" }, "description": "Array of category IDs" },
+        "image": { "type": "string", "description": "URL to product image" },
+        "stock": { "type": "integer", "description": "Available quantity" },
+        "storeId": { "type": "string", "description": "ID of the store that added this product" },
+        "locals": { "type": "object", "description": "Localized name and description" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "brand", "price", "categories", "image", "locals"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "A product category, potentially nested.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "parentId": { "type": "string", "description": "ID of the parent category, or null" },
+        "isFeatured": { "type": "boolean" },
+        "icon": { "type": "string" },
+        "bannerImageUrl": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "locals": { "type": "object", "description": "Localized title and description" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "isFeatured", "locals"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer's purchase record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "ID of the customer" },
+        "items": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "List of products in the order"
+        },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "paid", "failed", "shipped", "delivered"] },
+        "deliveryStatus": { "type": "string", "enum": ["pending", "assigned", "picked_up", "delivered"] },
+        "driverId": { "type": "string", "description": "ID of the assigned driver" },
+        "storeId": { "type": "string", "description": "ID of the store" },
+        "paymentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "customerInfo": { 
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "email": { "type": "string" },
+            "address": { "type": "string" },
+            "destinationCoords": {
+              "type": "object",
+              "properties": {
+                "lat": { "type": "number" },
+                "lng": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "required": ["userId", "items", "totalAmount", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "customer", "store", "driver"] },
+        "address": { "type": "string" },
+        "isVerified": { "type": "boolean" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Store": {
+      "title": "Store",
+      "description": "Store information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "locals": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "name", "isVerified"]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "Driver information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "vehicleInfo": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["available", "busy", "offline"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "vehicleInfo", "isVerified"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "object" },
+        "body": { "type": "object" },
+        "type": { "type": "string", "enum": ["order_update", "promotion", "system"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["userId", "title", "body", "type", "read"]
+    },
+    "WishlistItem": {
+      "title": "WishlistItem",
+      "description": "A product saved by a user for later.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "productId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "productId"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of all products."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of all orders."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Collection of all stores."
+    },
+    "/drivers/{driverId}": {
+      "schema": "Driver",
+      "description": "Collection of all drivers."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "Collection of all notifications."
+    },
+    "/wishlist/{wishlistId}": {
+      "schema": "WishlistItem",
+      "description": "Collection of all wishlist items."
+    }
+  }
+}
