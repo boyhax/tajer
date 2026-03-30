@@ -1,0 +1,40 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "facegoogl@gmail.com" && request.auth.token.email_verified == true) ||
+          request.auth.uid == "o3A0S2cCuHgkiFIycWPtWldGpl03");
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Rules
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    match /stores/{storeId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /drivers/{driverId}/{allPaths=**} {
+      allow read: if isOwner(driverId) || isAdmin();
+      allow write: if isOwner(driverId) || isAdmin();
+    }
+  }
+}

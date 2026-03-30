@@ -45,9 +45,9 @@ export const CategoryProducts = ({ categoryId, onSelectProduct }: CategoryProduc
   if (products.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mt-4">
+    <div className="flex gap-4 mt-4 overflow-x-auto pb-4 snap-x">
       {products.map(p => (
-        <div key={p.id}>
+        <div key={p.id} className="min-w-[140px] md:min-w-[200px] snap-start">
           <ProductCard product={p} onSelect={onSelectProduct} variant="minimal" />
         </div>
       ))}

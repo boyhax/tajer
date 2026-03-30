@@ -80,6 +80,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 import { config } from './lib/config';
+import * as LucideIcons from 'lucide-react';
 import { 
   ShoppingBag, 
   ShoppingCart, 
@@ -592,6 +593,64 @@ const WelcomeModal = ({ onClose }: { onClose: () => void }) => {
       </motion.div>
     </div>
   );
+};
+
+// --- Utilities ---
+
+const isPointInPolygon = (point: { lat: number; lng: number }, polygon: { lat: number; lng: number }[]) => {
+  let isInside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+      (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+    if (intersect) isInside = !isInside;
+  }
+  return isInside;
+};
+
+const isPointInRectangle = (point: { lat: number; lng: number }, bounds: { lat: number; lng: number }[]) => {
+  if (bounds.length < 2) return false;
+  const latMin = Math.min(bounds[0].lat, bounds[1].lat);
+  const latMax = Math.max(bounds[0].lat, bounds[1].lat);
+  const lngMin = Math.min(bounds[0].lng, bounds[1].lng);
+  const lngMax = Math.max(bounds[0].lng, bounds[1].lng);
+  return point.lat >= latMin && point.lat <= latMax && point.lng >= lngMin && point.lng <= lngMax;
+};
+
+const getRegionForPoint = (point: { lat: number; lng: number }, regions: Region[]) => {
+  return regions.find(region => {
+    if (region.type === 'geozone') {
+      return isPointInPolygon(point, region.coordinates);
+    } else if (region.type === 'rectangle') {
+      return isPointInRectangle(point, region.coordinates);
+    }
+    return false;
+  });
+};
+
+// --- Hooks ---
+
+export const useDeliveryCost = () => {
+  const { regions } = useRegions();
+  const { deliveryMethods } = useDeliveryMethods();
+
+  const calculateCost = (
+    sourceCoords: { lat: number; lng: number },
+    destCoords: { lat: number; lng: number },
+    methodId: string
+  ) => {
+    const sourceRegion = getRegionForPoint(sourceCoords, regions);
+    const destRegion = getRegionForPoint(destCoords, regions);
+    const method = deliveryMethods.find(m => m.id === methodId);
+
+    if (!sourceRegion || !destRegion || !method) return null;
+
+    const cost = method.priceMatrix[sourceRegion.id]?.[destRegion.id];
+    return cost !== undefined ? cost : null;
+  };
+
+  return { calculateCost };
 };
 
 // --- Components ---
@@ -3231,7 +3290,11 @@ const RegionsManagement = () => {
   };
 
   const handleSave = async () => {
-    if (!newRegion.name || !newRegion.coordinates?.length) return;
+    console.log('Attempting to save region:', newRegion);
+    if (!newRegion.name || !newRegion.coordinates?.length) {
+      console.error('Validation failed: name or coordinates missing', { name: newRegion.name, coords: newRegion.coordinates });
+      return;
+    }
     try {
       if (editing) {
         await updateRegion(editing.id, newRegion);
@@ -3242,7 +3305,8 @@ const RegionsManagement = () => {
       setEditing(null);
       setNewRegion({ name: '', type: 'geozone', coordinates: [] });
     } catch (error) {
-      alert('Error saving region');
+      console.error('Error saving region:', error);
+      alert('Error saving region: ' + error);
     }
   };
 
@@ -4419,7 +4483,7 @@ const AdminPanel = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex overflow-x-auto gap-2 md:gap-4 border-b border-gray-100 pb-4 no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth">
+      <div className="flex flex-nowrap md:flex-wrap overflow-x-auto md:overflow-visible gap-2 md:gap-4 border-b border-gray-100 pb-4 no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth">
         {[
           { id: 'products', label: t({ en: 'Products', ar: 'المنتجات' }), icon: Package },
           { id: 'categories', label: t({ en: 'Categories', ar: 'الأقسام' }), icon: ClipboardList },
@@ -6379,11 +6443,15 @@ export default function App() {
                   {selectedProduct ? (
                     <motion.div 
                       key="detail"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+                      onClick={() => setSelectedProduct(null)}
                     >
-                      <ProductDetail product={selectedProduct} onBack={() => setSelectedProduct(null)} />
+                      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl overflow-hidden max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                        <ProductDetail product={selectedProduct} onBack={() => setSelectedProduct(null)} />
+                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -6485,20 +6553,16 @@ export default function App() {
                               <h2 className="text-base md:text-3xl font-black tracking-tight mb-3 md:mb-10">{t({ en: 'Featured Categories', ar: 'الفئات المميزة' })}</h2>
                               <div className="space-y-4 md:space-y-16">
                                 {featuredCategories.map(cat => (
-                                  <div key={cat.id} className="space-y-2 md:space-y-8">
+                                  <div key={cat.id} className="space-y-2 md:space-y-4">
                                     <div 
-                                      className="relative h-24 md:h-48 rounded-xl md:rounded-[2.5rem] overflow-hidden group cursor-pointer"
+                                      className="flex items-center gap-3 cursor-pointer group"
                                       onClick={() => setSelectedCategoryId(cat.id)}
                                     >
-                                      <img 
-                                        src={cat.bannerImageUrl || undefined} 
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                                        referrerPolicy="no-referrer"
-                                      />
-                                      <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex flex-col justify-center p-3 md:p-10">
-                                        <h3 className="text-white text-base md:text-4xl font-black tracking-tighter">{t(cat.locals.title)}</h3>
-                                        <p className="text-white/80 text-[9px] md:text-lg font-medium max-w-md line-clamp-1 md:line-clamp-2">{t(cat.locals.description)}</p>
+                                      <div className="w-10 h-10 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-gray-100 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-colors">
+                                        {/* @ts-ignore */}
+                                        {React.createElement((LucideIcons as any)[cat.icon] || LucideIcons.Package, { className: "w-5 h-5 md:w-8 md:h-8" })}
                                       </div>
+                                      <h3 className="text-lg md:text-3xl font-black tracking-tighter">{t(cat.locals.title)}</h3>
                                     </div>
                                     
                                     {/* Products for this category */}

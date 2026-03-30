@@ -46,7 +46,7 @@ service cloud.firestore {
 
     match /regions/{regionId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
     match /deliveryMethods/{deliveryMethodId} {
@@ -81,6 +81,10 @@ service cloud.firestore {
 
     match /wishlist/{wishlistId} {
       allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /test/connection {
+      allow read: if true;
     }
   }
 }
