@@ -122,7 +122,16 @@ import {
   Star,
   Users,
   Send,
-  Upload
+  Upload,
+  Apple,
+  Milk,
+  Beef,
+  Coffee,
+  Candy,
+  Leaf,
+  Sprout,
+  Sparkles,
+  Cookie
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
@@ -1633,6 +1642,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
   );
 };
 
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+
 const PhoneLogin = () => {
   const { signIn, signInWithPhone, verifyCode } = useContext(AuthContext);
   const { t, lang } = useContext(LanguageContext);
@@ -1641,13 +1652,31 @@ const PhoneLogin = () => {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  const initRecaptcha = () => {
+    if (recaptchaVerifier) {
+      try { recaptchaVerifier.clear(); } catch (e) {}
+      recaptchaVerifier = null;
+    }
+    const container = document.getElementById('recaptcha-container');
+    if (container) container.innerHTML = '';
+    
+    try {
+      recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        badge: 'inline'
+      });
+    } catch (err) {
+      console.error('Failed to init recaptcha', err);
+    }
+  };
 
   useEffect(() => {
+    initRecaptcha();
     return () => {
-      if (recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current.clear();
-        recaptchaVerifierRef.current = null;
+      if (recaptchaVerifier) {
+        try { recaptchaVerifier.clear(); } catch (e) {}
+        recaptchaVerifier = null;
       }
     };
   }, []);
@@ -1658,31 +1687,25 @@ const PhoneLogin = () => {
     setLoading(true);
     setError('');
     try {
-      if (!recaptchaVerifierRef.current) {
-        const container = document.getElementById('recaptcha-container');
-        if (container) {
-          container.innerHTML = '';
-        }
-        
-        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          size: 'invisible',
-          badge: 'inline'
-        });
+      if (!recaptchaVerifier) {
+        initRecaptcha();
       }
 
-      await signInWithPhone(phoneNumber, recaptchaVerifierRef.current);
+      await signInWithPhone(phoneNumber, recaptchaVerifier!);
       setStep('code');
     } catch (err: any) {
       console.error('Recaptcha init or sign in failed:', err);
-      setError(err.message || 'Failed to send code');
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch (e) {}
-        recaptchaVerifierRef.current = null;
+      
+      // On auth failure, clear and re-initialize the verifier
+      initRecaptcha();
+
+      let errorMessage = err.message || 'Failed to send code';
+      if (err.code === 'auth/operation-not-allowed') {
+        errorMessage = 'Phone Authentication is not enabled in the Firebase Console. Please enable it under Authentication > Sign-in method.';
+      } else if (err.message?.includes('already been rendered')) {
+        errorMessage = 'reCAPTCHA error. Please refresh the page and try again.';
       }
-      const container = document.getElementById('recaptcha-container');
-      if (container) container.innerHTML = '';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -2210,9 +2233,17 @@ const ImageUpload = ({
       const fileName = `${Date.now()}_${file.name}`;
       const url = await uploadImage(file, `${path}/${fileName}`);
       onUpload(url);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Upload error:', error);
-      alert('Failed to upload image');
+      let errorMessage = 'Failed to upload image';
+      if (error.code === 'storage/unauthorized') {
+        errorMessage = 'Unauthorized: Please check your Firebase Storage rules.';
+      } else if (error.code === 'storage/canceled') {
+        errorMessage = 'Upload canceled.';
+      } else if (error.message?.includes('not found')) {
+        errorMessage = 'Firebase Storage bucket not found. Please enable it in the Firebase Console.';
+      }
+      alert(errorMessage);
     } finally {
       setUploading(false);
     }
@@ -3155,7 +3186,7 @@ const DriverDashboard = () => {
 
 const AdminPanel = () => {
   const { t } = useContext(LanguageContext);
-  const { profile } = useContext(AuthContext);
+  const { profile, user } = useContext(AuthContext);
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -3641,37 +3672,85 @@ const AdminPanel = () => {
       
       const demoCategories = [
         { 
-          title: 'Electronics', 
+          title: 'Fruits & Vegetables', 
           isFeatured: true, 
-          icon: 'Smartphone', 
-          bannerImageUrl: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=1200',
+          icon: 'Apple', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=1200',
           locals: {
-            title: { en: 'Electronics', ar: 'إلكترونيات' },
-            description: { en: 'Latest gadgets and tech.', ar: 'أحدث الأجهزة والتقنيات.' }
+            title: { en: 'Fruits & Vegetables', ar: 'الفواكه والخضروات' },
+            description: { en: 'Fresh from the farm.', ar: 'طازجة من المزرعة.' }
           },
           parentId: null,
           createdAt: serverTimestamp()
         },
         { 
-          title: 'Fashion', 
+          title: 'Dairy & Eggs', 
           isFeatured: true, 
-          icon: 'Shirt', 
-          bannerImageUrl: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=1200',
+          icon: 'Milk', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1550583724-125581fe2f8a?w=1200',
           locals: {
-            title: { en: 'Fashion', ar: 'موضة' },
-            description: { en: 'Trendy apparel and accessories.', ar: 'ملابس وإكسسوارات عصرية.' }
+            title: { en: 'Dairy & Eggs', ar: 'الألبان والبيض' },
+            description: { en: 'Fresh dairy products.', ar: 'منتجات الألبان الطازجة.' }
           },
           parentId: null,
           createdAt: serverTimestamp()
         },
         { 
-          title: 'Home & Living', 
+          title: 'Bakery', 
+          isFeatured: true, 
+          icon: 'Cookie', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1200',
+          locals: {
+            title: { en: 'Bakery', ar: 'المخبوزات' },
+            description: { en: 'Freshly baked every day.', ar: 'مخبوز طازج كل يوم.' }
+          },
+          parentId: null,
+          createdAt: serverTimestamp()
+        },
+        { 
+          title: 'Meat & Poultry', 
+          isFeatured: true, 
+          icon: 'Beef', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc822?w=1200',
+          locals: {
+            title: { en: 'Meat & Poultry', ar: 'اللحوم والدواجن' },
+            description: { en: 'Premium quality meats.', ar: 'لحوم عالية الجودة.' }
+          },
+          parentId: null,
+          createdAt: serverTimestamp()
+        },
+        { 
+          title: 'Beverages', 
+          isFeatured: true, 
+          icon: 'Coffee', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1544787210-2827448b303c?w=1200',
+          locals: {
+            title: { en: 'Beverages', ar: 'المشروبات' },
+            description: { en: 'Refreshing drinks and juices.', ar: 'مشروبات وعصائر منعشة.' }
+          },
+          parentId: null,
+          createdAt: serverTimestamp()
+        },
+        { 
+          title: 'Snacks & Sweets', 
+          isFeatured: true, 
+          icon: 'Candy', 
+          bannerImageUrl: 'https://images.unsplash.com/photo-1599490659213-e2b9527bb087?w=1200',
+          locals: {
+            title: { en: 'Snacks & Sweets', ar: 'الوجبات الخفيفة والحلويات' },
+            description: { en: 'Delicious treats for any time.', ar: 'حلويات لذيذة في أي وقت.' }
+          },
+          parentId: null,
+          createdAt: serverTimestamp()
+        },
+        { 
+          title: 'Household', 
           isFeatured: true, 
           icon: 'Home', 
-          bannerImageUrl: 'https://images.unsplash.com/photo-1484101403633-562f891dc89a?w=1200',
+          bannerImageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=1200',
           locals: {
-            title: { en: 'Home & Living', ar: 'المنزل والمعيشة' },
-            description: { en: 'Beautiful decor for your home.', ar: 'ديكور جميل لمنزلك.' }
+            title: { en: 'Household', ar: 'الأدوات المنزلية' },
+            description: { en: 'Cleaning and home essentials.', ar: 'أساسيات التنظيف والمنزل.' }
           },
           parentId: null,
           createdAt: serverTimestamp()
@@ -3683,82 +3762,293 @@ const AdminPanel = () => {
         catRefs[cat.title] = docRef.id;
       }
 
-      // 2. Create Sub-categories
-      const subCategories = [
-        { 
-          title: 'Watches', 
-          isFeatured: false, 
-          icon: 'Watch', 
-          bannerImageUrl: '',
-          locals: {
-            title: { en: 'Watches', ar: 'ساعات' },
-            description: { en: 'Luxury timepieces.', ar: 'ساعات فاخرة.' }
-          },
-          parentId: catRefs['Fashion'],
+      // 2. Create Tags
+      const tagRefs: { [key: string]: string } = {};
+      const demoTags = [
+        {
+          title: { en: 'Fresh', ar: 'طازج' },
+          icon: 'Leaf',
+          bannerImage: '',
+          isPublic: true,
+          isPromoted: true,
+          discountType: 'none',
+          discountValue: 0,
+          createdAt: serverTimestamp()
+        },
+        {
+          title: { en: 'Organic', ar: 'عضوي' },
+          icon: 'Sprout',
+          bannerImage: '',
+          isPublic: true,
+          isPromoted: false,
+          discountType: 'none',
+          discountValue: 0,
+          createdAt: serverTimestamp()
+        },
+        {
+          title: { en: 'Discounted', ar: 'مخفض' },
+          icon: 'Tag',
+          bannerImage: '',
+          isPublic: true,
+          isPromoted: true,
+          discountType: 'product',
+          discountValue: 20,
+          createdAt: serverTimestamp()
+        },
+        {
+          title: { en: 'New Arrival', ar: 'وصل حديثاً' },
+          icon: 'Sparkles',
+          bannerImage: '',
+          isPublic: true,
+          isPromoted: true,
+          discountType: 'none',
+          discountValue: 0,
           createdAt: serverTimestamp()
         }
       ];
 
-      for (const sub of subCategories) {
-        const docRef = await addDoc(collection(db, 'categories'), sub);
-        catRefs[sub.title] = docRef.id;
+      for (const tag of demoTags) {
+        const docRef = await addDoc(collection(db, 'tags'), tag);
+        tagRefs[tag.title.en] = docRef.id;
       }
 
       // 3. Create Products
       const demoProducts = [
         { 
-          name: 'Luxe Minimalist Watch', 
-          brand: 'Timeless', 
-          price: 45, 
-          categories: [catRefs['Fashion'], catRefs['Watches']], 
-          image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800', 
-          description: 'A timeless piece for the modern minimalist.', 
+          name: 'Red Apples', 
+          brand: 'FreshFarm', 
+          price: 2.5, 
+          categories: [catRefs['Fruits & Vegetables']], 
+          tags: [tagRefs['Fresh'], tagRefs['Organic']],
+          image: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=800', 
+          description: 'Sweet and crunchy red apples.', 
           locals: {
-            name: { en: 'Luxe Minimalist Watch', ar: 'ساعة لوكس البسيطة' },
-            description: { en: 'A timeless piece for the modern minimalist.', ar: 'قطعة خالدة للمبسط الحديث.' }
+            name: { en: 'Red Apples', ar: 'تفاح أحمر' },
+            description: { en: 'Sweet and crunchy red apples.', ar: 'تفاح أحمر حلو ومقرمش.' }
+          },
+          stock: 100, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Bananas 1kg', 
+          brand: 'FreshFarm', 
+          price: 1.5, 
+          categories: [catRefs['Fruits & Vegetables']], 
+          tags: [tagRefs['Fresh']],
+          image: 'https://images.unsplash.com/photo-1571771894821-ad990241274d?w=800', 
+          description: 'Ripe yellow bananas.', 
+          locals: {
+            name: { en: 'Bananas 1kg', ar: 'موز 1 كجم' },
+            description: { en: 'Ripe yellow bananas.', ar: 'موز أصفر ناضج.' }
+          },
+          stock: 80, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Fresh Milk 1L', 
+          brand: 'DairyBest', 
+          price: 1.8, 
+          categories: [catRefs['Dairy & Eggs']], 
+          tags: [tagRefs['Fresh']],
+          image: 'https://images.unsplash.com/photo-1563636619-e9107da4a1bb?w=800', 
+          description: 'Pasteurized whole milk.', 
+          locals: {
+            name: { en: 'Fresh Milk 1L', ar: 'حليب طازج 1 لتر' },
+            description: { en: 'Pasteurized whole milk.', ar: 'حليب كامل الدسم مبستر.' }
+          },
+          stock: 50, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Large Eggs 12pk', 
+          brand: 'DairyBest', 
+          price: 3.5, 
+          categories: [catRefs['Dairy & Eggs']], 
+          tags: [tagRefs['Fresh']],
+          image: 'https://images.unsplash.com/photo-1518569190539-242a483c3b2d?w=800', 
+          description: 'Farm fresh large eggs.', 
+          locals: {
+            name: { en: 'Large Eggs 12pk', ar: 'بيض كبير 12 حبة' },
+            description: { en: 'Farm fresh large eggs.', ar: 'بيض كبير طازج من المزرعة.' }
+          },
+          stock: 40, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Whole Wheat Bread', 
+          brand: 'BakeHouse', 
+          price: 1.2, 
+          categories: [catRefs['Bakery']], 
+          tags: [tagRefs['Fresh']],
+          image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800', 
+          description: 'Freshly baked whole wheat bread.', 
+          locals: {
+            name: { en: 'Whole Wheat Bread', ar: 'خبز القمح الكامل' },
+            description: { en: 'Freshly baked whole wheat bread.', ar: 'خبز القمح الكامل المخبوز طازجاً.' }
+          },
+          stock: 30, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Chicken Breast 500g', 
+          brand: 'MeatMaster', 
+          price: 5.5, 
+          categories: [catRefs['Meat & Poultry']], 
+          tags: [tagRefs['Fresh']],
+          image: 'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=800', 
+          description: 'Skinless and boneless chicken breast.', 
+          locals: {
+            name: { en: 'Chicken Breast 500g', ar: 'صدر دجاج 500 جرام' },
+            description: { en: 'Skinless and boneless chicken breast.', ar: 'صدر دجاج بدون جلد وعظم.' }
+          },
+          stock: 20, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Ribeye Steak 300g', 
+          brand: 'MeatMaster', 
+          price: 12.0, 
+          categories: [catRefs['Meat & Poultry']], 
+          tags: [tagRefs['New Arrival']],
+          image: 'https://images.unsplash.com/photo-1546248136-24b0ca9d1148?w=800', 
+          description: 'Premium grass-fed ribeye steak.', 
+          locals: {
+            name: { en: 'Ribeye Steak 300g', ar: 'ستيك ريب آي 300 جرام' },
+            description: { en: 'Premium grass-fed ribeye steak.', ar: 'ستيك ريب آي فاخر مغذى على الأعشاب.' }
           },
           stock: 10, 
           storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
           createdAt: serverTimestamp() 
         },
         { 
-          name: 'Premium Leather Bag', 
-          brand: 'Heritage', 
-          price: 120, 
-          categories: [catRefs['Fashion']], 
-          image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800', 
-          description: 'Handcrafted from genuine full-grain leather.', 
+          name: 'Orange Juice 1L', 
+          brand: 'Juicy', 
+          price: 3.2, 
+          categories: [catRefs['Beverages']], 
+          tags: [tagRefs['Discounted']],
+          image: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=800', 
+          description: '100% pure orange juice.', 
           locals: {
-            name: { en: 'Premium Leather Bag', ar: 'حقيبة جلدية فاخرة' },
-            description: { en: 'Handcrafted from genuine full-grain leather.', ar: 'مصنوعة يدوياً من الجلد الطبيعي بالكامل.' }
+            name: { en: 'Orange Juice 1L', ar: 'عصير برتقال 1 لتر' },
+            description: { en: '100% pure orange juice.', ar: 'عصير برتقال طبيعي 100٪.' }
           },
-          stock: 5, 
+          stock: 40, 
           storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
           createdAt: serverTimestamp() 
         },
         { 
-          name: 'Studio Headphones', 
-          brand: 'AudioPro', 
-          price: 85, 
-          categories: [catRefs['Electronics']], 
-          image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800', 
-          description: 'High-fidelity sound for the discerning listener.', 
+          name: 'Mineral Water 1.5L', 
+          brand: 'Aqua', 
+          price: 0.5, 
+          categories: [catRefs['Beverages']], 
+          tags: [],
+          image: 'https://images.unsplash.com/photo-1523362628742-0c26015eb262?w=800', 
+          description: 'Pure mineral water.', 
           locals: {
-            name: { en: 'Studio Headphones', ar: 'سماعات استوديو' },
-            description: { en: 'High-fidelity sound for the discerning listener.', ar: 'صوت عالي الدقة للمستمع المتميز.' }
+            name: { en: 'Mineral Water 1.5L', ar: 'مياه معدنية 1.5 لتر' },
+            description: { en: 'Pure mineral water.', ar: 'مياه معدنية نقية.' }
           },
-          stock: 15, 
+          stock: 200, 
           storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Potato Chips', 
+          brand: 'Crunchy', 
+          price: 1.5, 
+          categories: [catRefs['Snacks & Sweets']], 
+          tags: [],
+          image: 'https://images.unsplash.com/photo-1566478431375-704332ca523f?w=800', 
+          description: 'Classic salted potato chips.', 
+          locals: {
+            name: { en: 'Potato Chips', ar: 'رقائق البطاطس' },
+            description: { en: 'Classic salted potato chips.', ar: 'رقائق البطاطس المملحة الكلاسيكية.' }
+          },
+          stock: 60, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
+          createdAt: serverTimestamp() 
+        },
+        { 
+          name: 'Dish Soap 500ml', 
+          brand: 'CleanHome', 
+          price: 2.2, 
+          categories: [catRefs['Household']], 
+          tags: [],
+          image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800', 
+          description: 'Tough on grease dish soap.', 
+          locals: {
+            name: { en: 'Dish Soap 500ml', ar: 'صابون أطباق 500 مل' },
+            description: { en: 'Tough on grease dish soap.', ar: 'صابون أطباق قوي على الدهون.' }
+          },
+          stock: 45, 
+          storeId: 'default-store',
+          status: 'published',
+          hasVariants: false,
           createdAt: serverTimestamp() 
         }
       ];
 
-      for (const p of demoProducts) {
-        await addDoc(collection(db, 'products'), p);
+      const productIds: string[] = [];
+      for (const prod of demoProducts) {
+        const docRef = await addDoc(collection(db, 'products'), prod);
+        productIds.push(docRef.id);
       }
-      alert('Demo data seeded successfully!');
+
+      // 4. Create Sample Orders (if user is logged in)
+      if (user) {
+        const demoOrders = [
+          {
+            userId: user.uid,
+            items: [
+              { ...demoProducts[0], id: productIds[0], quantity: 2 },
+              { ...demoProducts[1], id: productIds[1], quantity: 1 }
+            ],
+            totalAmount: 6.8,
+            status: 'delivered',
+            paymentMethod: 'cod',
+            customerInfo: {
+              name: user.displayName || 'Demo User',
+              email: user.email || 'demo@example.com',
+              address: '123 Demo St, City'
+            },
+            createdAt: serverTimestamp()
+          }
+        ];
+
+        for (const order of demoOrders) {
+          await addDoc(collection(db, 'orders'), order);
+        }
+      }
+
+      alert('Supermarket data seeded successfully!');
     } catch (error: any) {
-      console.error(error);
+      console.error('Error seeding data:', error);
       alert('Error seeding data: ' + error.message);
     }
   };
@@ -5524,10 +5814,12 @@ export default function App() {
 
   const verifyCode = async (code: string) => {
     try {
-      if (!confirmationResult) throw new Error('No confirmation result');
+      if (!confirmationResult) {
+        throw new Error('No confirmation result found. This usually happens if the page was refreshed or the initial phone sign-in attempt failed. Please try sending the code again.');
+      }
       await confirmationResult.confirm(code);
       setConfirmationResult(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Code verification failed', error);
       throw error;
     }
@@ -5755,38 +6047,42 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Promoted Tags (Banners) */}
+                          {/* Promoted Tags (Banners) - Horizontal Carousel */}
                           {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && tags.filter(t => t.isPromoted).length > 0 && (
-                            <div className="mb-4 md:mb-16 space-y-2 md:space-y-8">
-                              {tags.filter(t => t.isPromoted).map(tag => (
-                                <div 
-                                  key={tag.id} 
-                                  className="relative h-32 md:h-64 rounded-2xl md:rounded-[3rem] overflow-hidden group cursor-pointer shadow-xl"
-                                  onClick={() => setSelectedTagId(tag.id)}
-                                >
-                                  <img 
-                                    src={tag.bannerImage || undefined} 
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-3 md:p-12">
-                                    <div className="absolute top-2 left-2 md:top-8 md:left-8 flex items-center gap-2 bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-4 md:py-2 rounded-full border border-white/20">
-                                      <span className="text-white text-[6px] md:text-[10px] font-black uppercase tracking-[0.2em]">Offers</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 md:gap-4 mb-0.5 md:mb-4">
-                                      <div className="p-1 md:p-3 bg-white/20 backdrop-blur-md rounded-lg md:rounded-2xl">
-                                        <TagIcon className="w-3 h-3 md:w-8 md:h-8 text-white" />
+                            <div className="mb-4 md:mb-16 overflow-hidden">
+                              <div className="flex gap-3 md:gap-8 overflow-x-auto no-scrollbar pb-4 snap-x snap-mandatory px-1 md:px-0">
+                                {tags.filter(t => t.isPromoted).map(tag => (
+                                  <motion.div 
+                                    key={tag.id} 
+                                    className="relative h-40 md:h-80 min-w-[85vw] md:min-w-[600px] rounded-2xl md:rounded-[3rem] overflow-hidden group cursor-pointer shadow-xl flex-shrink-0 snap-center"
+                                    onClick={() => setSelectedTagId(tag.id)}
+                                    whileHover={{ scale: 1.01 }}
+                                    whileTap={{ scale: 0.98 }}
+                                  >
+                                    <img 
+                                      src={tag.bannerImage || undefined} 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-4 md:p-12">
+                                      <div className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 bg-white/20 backdrop-blur-md px-3 py-1 md:px-4 md:py-2 rounded-full border border-white/20">
+                                        <span className="text-white text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em]">Offers</span>
                                       </div>
-                                      <h3 className="text-white text-lg md:text-5xl font-black tracking-tighter uppercase italic">{t(tag.title)}</h3>
-                                    </div>
-                                    {tag.discountType !== 'none' && (
-                                      <div className="bg-white text-black px-2 py-0.5 md:px-6 md:py-2 rounded-full w-fit font-black text-[10px] md:text-xl shadow-lg">
-                                        {tag.discountType === 'percentage' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
+                                      <div className="flex items-center gap-2 md:gap-4 mb-1 md:mb-4">
+                                        <div className="p-2 md:p-3 bg-white/20 backdrop-blur-md rounded-lg md:rounded-2xl">
+                                          <TagIcon className="w-4 h-4 md:w-8 md:h-8 text-white" />
+                                        </div>
+                                        <h3 className="text-white text-xl md:text-5xl font-black tracking-tighter uppercase italic">{t(tag.title)}</h3>
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                                      {tag.discountType !== 'none' && (
+                                        <div className="bg-white text-black px-3 py-1 md:px-6 md:py-2 rounded-full w-fit font-black text-xs md:text-xl shadow-lg">
+                                          {tag.discountType === 'product' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </motion.div>
+                                ))}
+                              </div>
                             </div>
                           )}
 

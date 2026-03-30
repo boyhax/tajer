@@ -14,8 +14,9 @@ async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error: any) {
+    console.error("Firestore connection test failed:", error.message);
     if (error.message?.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+      console.error("Please check your Firebase configuration. This often means the Firestore database has not been created in the Firebase Console or the network is blocked.");
     }
   }
 }
