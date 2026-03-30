@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -7,7 +7,8 @@ import {
   User,
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  ConfirmationResult
+  ConfirmationResult,
+  updateProfile
 } from 'firebase/auth';
 import { 
   collection, 
@@ -118,7 +119,10 @@ import {
   EyeOff,
   Banknote,
   Tag as TagIcon,
-  Star
+  Star,
+  Users,
+  Send,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
@@ -135,6 +139,8 @@ let DefaultIcon = L.icon({
     iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+import { uploadImage, STORAGE_PATHS } from './lib/storage';
 
 // --- Contexts ---
 const LanguageContext = createContext<{
@@ -156,7 +162,7 @@ const AuthContext = createContext<{
   profile: UserProfile | null;
   loading: boolean;
   signIn: () => Promise<void>;
-  signInWithPhone: (phoneNumber: string) => Promise<void>;
+  signInWithPhone: (phoneNumber: string, verifier?: RecaptchaVerifier) => Promise<void>;
   verifyCode: (code: string) => Promise<void>;
   logout: () => Promise<void>;
 }>({ 
@@ -164,9 +170,10 @@ const AuthContext = createContext<{
   profile: null, 
   loading: true, 
   signIn: async () => {}, 
-  signInWithPhone: async () => {}, 
+  signInWithPhone: async (phoneNumber: string, verifier?: RecaptchaVerifier) => {}, 
   verifyCode: async () => {}, 
-  logout: async () => {} 
+  logout: async () => {},
+  updateProfile: async () => {}
 });
 
 const NotificationContext = createContext<{
@@ -634,7 +641,7 @@ const Navbar = ({ onNavigate, currentPage }: { onNavigate: (page: string) => voi
           </button>
         )}
 
-        {profile?.role === 'admin' && (
+        {profile?.roles?.includes('admin') && (
           <button 
             onClick={() => onNavigate('admin')}
             className={`text-sm font-medium hover:text-black transition-colors ${currentPage === 'admin' ? 'text-black font-bold' : 'text-gray-500'}`}
@@ -684,7 +691,7 @@ const Navbar = ({ onNavigate, currentPage }: { onNavigate: (page: string) => voi
               className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors overflow-hidden"
             >
               {user.photoURL ? (
-                <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={user.photoURL || undefined} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <UserIcon className="w-5 h-5" />
               )}
@@ -715,21 +722,21 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
   const { cart } = useContext(CartContext);
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2 flex items-center justify-between z-50" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 py-3 flex items-center justify-between z-50" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <button 
         onClick={() => onNavigate('home')}
         className={`flex flex-col items-center gap-0.5 ${currentPage === 'home' ? 'text-black' : 'text-gray-400'}`}
       >
-        <Home className="w-5 h-5" />
-        <span className="text-[8px] font-bold uppercase">{t({ en: 'Home', ar: 'الرئيسية' })}</span>
+        <Home className="w-[18px] h-[18px]" />
+        <span className="text-[7px] font-bold uppercase">{t({ en: 'Home', ar: 'الرئيسية' })}</span>
       </button>
 
       <button 
         onClick={() => onNavigate('orders')}
         className={`flex flex-col items-center gap-0.5 ${currentPage === 'orders' ? 'text-black' : 'text-gray-400'}`}
       >
-        <ClipboardList className="w-5 h-5" />
-        <span className="text-[8px] font-bold uppercase">{t({ en: 'Orders', ar: 'الطلبات' })}</span>
+        <ClipboardList className="w-[18px] h-[18px]" />
+        <span className="text-[7px] font-bold uppercase">{t({ en: 'Orders', ar: 'الطلبات' })}</span>
       </button>
 
       {user && (
@@ -737,8 +744,8 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
           onClick={() => onNavigate('wishlist')}
           className={`flex flex-col items-center gap-0.5 ${currentPage === 'wishlist' ? 'text-black' : 'text-gray-400'}`}
         >
-          <Heart className={`w-5 h-5 ${currentPage === 'wishlist' ? 'fill-current' : ''}`} />
-          <span className="text-[8px] font-bold uppercase">{t({ en: 'Wishlist', ar: 'الأمنيات' })}</span>
+          <Heart className={`w-[18px] h-[18px] ${currentPage === 'wishlist' ? 'fill-current' : ''}`} />
+          <span className="text-[7px] font-bold uppercase">{t({ en: 'Wishlist', ar: 'الأمنيات' })}</span>
         </button>
       )}
 
@@ -746,21 +753,21 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
         onClick={() => onNavigate('cart')}
         className={`relative flex flex-col items-center gap-0.5 ${currentPage === 'cart' ? 'text-black' : 'text-gray-400'}`}
       >
-        <ShoppingCart className="w-5 h-5" />
+        <ShoppingCart className="w-[18px] h-[18px]" />
         {cart.length > 0 && (
-          <span className="absolute -top-1 -right-1 bg-black text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">
+          <span className="absolute -top-1 -right-1 bg-black text-white text-[7px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white">
             {cart.length}
           </span>
         )}
-        <span className="text-[8px] font-bold uppercase">{t({ en: 'Cart', ar: 'السلة' })}</span>
+        <span className="text-[7px] font-bold uppercase">{t({ en: 'Cart', ar: 'السلة' })}</span>
       </button>
 
       <button 
         onClick={() => onNavigate('profile')}
         className={`flex flex-col items-center gap-0.5 ${currentPage === 'profile' ? 'text-black' : 'text-gray-400'}`}
       >
-        <ProfileIcon className="w-6 h-6" />
-        <span className="text-[10px] font-bold uppercase">{t({ en: 'Profile', ar: 'الملف' })}</span>
+        <ProfileIcon className="w-[18px] h-[18px]" />
+        <span className="text-[7px] font-bold uppercase">{t({ en: 'Profile', ar: 'الملف' })}</span>
       </button>
     </div>
   );
@@ -794,13 +801,15 @@ const ProductCard = ({
   if (variant === 'local-delivery') {
     return (
       <motion.div 
-        layoutId={product.id}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
         className="group cursor-pointer relative aspect-[4/5] rounded-2xl md:rounded-[2rem] overflow-hidden transition-all duration-500 shadow-lg"
         onClick={() => onSelect(product)}
         whileHover={{ scale: 0.98 }}
       >
         <img 
-          src={product.image} 
+          src={product.image || undefined} 
           alt={t(product.locals.name)} 
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
           referrerPolicy="no-referrer"
@@ -876,13 +885,15 @@ const ProductCard = ({
   if (variant === 'minimal') {
     return (
       <motion.div 
-        layoutId={product.id}
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
         className="group cursor-pointer relative aspect-square rounded-xl md:rounded-2xl overflow-hidden transition-all duration-500 shadow-md"
         onClick={() => onSelect(product)}
         whileHover={{ scale: 0.98 }}
       >
         <img 
-          src={product.image} 
+          src={product.image || undefined} 
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
           referrerPolicy="no-referrer" 
         />
@@ -912,13 +923,15 @@ const ProductCard = ({
   // Default Variant (Clean/Minimal)
   return (
     <motion.div 
-      layoutId={product.id}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
       className="group cursor-pointer relative aspect-[4/5] rounded-[1.5rem] md:rounded-[2rem] overflow-hidden transition-all duration-500 shadow-sm"
       onClick={() => onSelect(product)}
       whileHover={{ y: -4 }}
     >
       <img 
-        src={product.image} 
+        src={product.image || undefined} 
         alt={t(product.locals.name)} 
         className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
         referrerPolicy="no-referrer"
@@ -983,9 +996,13 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
         <button onClick={onBack} className="flex items-center gap-1 text-gray-500 mb-3 md:mb-8 hover:text-black transition-colors text-xs md:text-sm">
           <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> {t({ en: 'Back to Shop', ar: 'العودة للمتجر' })}
         </button>
-        <motion.div layoutId={product.id} className="aspect-square md:aspect-[4/5] bg-gray-100 rounded-xl md:rounded-3xl overflow-hidden relative">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="aspect-square md:aspect-[4/5] bg-gray-100 rounded-xl md:rounded-3xl overflow-hidden relative"
+        >
           <img 
-            src={product.image} 
+            src={product.image || undefined} 
             alt={t(product.locals.name)} 
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
@@ -1164,50 +1181,50 @@ const CartPage = ({ onCheckout }: { onCheckout: () => void }) => {
 
   if (cart.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 md:py-32">
-        <ShoppingBag className="w-12 h-12 md:w-16 md:h-16 text-gray-200 mb-4 md:mb-6" />
-        <h2 className="text-xl md:text-2xl font-bold mb-1 md:mb-2">{t({ en: 'Your bag is empty', ar: 'حقيبتك فارغة' })}</h2>
-        <p className="text-gray-500 text-sm md:text-base">{t({ en: "Looks like you haven't added anything yet.", ar: 'يبدو أنك لم تضف أي شيء بعد.' })}</p>
+      <div className="flex flex-col items-center justify-center py-16 md:py-32">
+        <ShoppingBag className="w-10 h-10 md:w-16 md:h-16 text-gray-200 mb-3 md:mb-6" />
+        <h2 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">{t({ en: 'Your bag is empty', ar: 'حقيبتك فارغة' })}</h2>
+        <p className="text-gray-500 text-xs md:text-base">{t({ en: "Looks like you haven't added anything yet.", ar: 'يبدو أنك لم تضف أي شيء بعد.' })}</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-3 md:p-4">
-      <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'Shopping Bag', ar: 'حقيبة التسوق' })}</h1>
-      <div className="space-y-3 md:space-y-8 mb-6 md:mb-12">
+    <div className="max-w-4xl mx-auto p-2 md:p-4">
+      <h1 className="text-xl md:text-4xl font-bold mb-3 md:mb-12">{t({ en: 'Shopping Bag', ar: 'حقيبة التسوق' })}</h1>
+      <div className="space-y-2 md:space-y-8 mb-4 md:mb-12">
         {cart.map((item) => (
-          <div key={item.id} className="flex gap-3 md:gap-6 items-center border-b border-gray-100 pb-3 md:pb-8">
+          <div key={item.id} className="flex gap-2.5 md:gap-6 items-center border-b border-gray-100 pb-2 md:pb-8">
             <img 
-              src={item.image} 
+              src={item.image || undefined} 
               alt={t(item.locals.name)} 
-              className="w-16 h-20 md:w-24 md:h-32 object-cover rounded-lg md:rounded-xl bg-gray-100"
+              className="w-14 h-18 md:w-24 md:h-32 object-cover rounded-lg md:rounded-xl bg-gray-100"
               referrerPolicy="no-referrer"
             />
             <div className="flex-1">
-              <h3 className="font-bold text-sm md:text-xl leading-tight">{t(item.locals.name)}</h3>
-              <p className="text-[10px] md:text-sm text-gray-500">{item.brand}</p>
-              <div className="mt-1 md:mt-2 font-semibold text-xs md:text-base">{item.price} {t(config.currency.symbol)} × {item.quantity}</div>
+              <h3 className="font-bold text-xs md:text-xl leading-tight line-clamp-1">{t(item.locals.name)}</h3>
+              <p className="text-[9px] md:text-sm text-gray-500">{item.brand}</p>
+              <div className="mt-0.5 md:mt-2 font-semibold text-[10px] md:text-base">{item.price} {t(config.currency.symbol)} × {item.quantity}</div>
             </div>
             <button 
               onClick={() => removeFromCart(item.id)}
-              className="p-1.5 md:p-3 text-red-400 hover:bg-red-50 rounded-full transition-colors"
+              className="p-1 md:p-3 text-red-400 hover:bg-red-50 rounded-full transition-colors"
             >
-              <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+              <Trash2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
             </button>
           </div>
         ))}
       </div>
-      <div className="bg-gray-50 rounded-xl md:rounded-3xl p-4 md:p-8">
-        <div className="flex justify-between items-center mb-4 md:mb-8">
-          <span className="text-gray-500 font-medium text-xs md:text-base">{t({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span>
-          <span className="text-lg md:text-2xl font-bold">{total.toFixed(2)} {t(config.currency.symbol)}</span>
+      <div className="bg-gray-50 rounded-xl md:rounded-3xl p-3 md:p-8">
+        <div className="flex justify-between items-center mb-3 md:mb-8">
+          <span className="text-gray-500 font-medium text-[10px] md:text-base">{t({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span>
+          <span className="text-base md:text-2xl font-bold">{total.toFixed(2)} {t(config.currency.symbol)}</span>
         </div>
         <button 
           onClick={onCheckout}
-          className="w-full bg-black text-white py-3.5 md:py-5 rounded-xl md:rounded-2xl font-bold text-base md:text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2 md:gap-3 shadow-lg"
+          className="w-full bg-black text-white py-3 md:py-5 rounded-xl md:rounded-2xl font-bold text-sm md:text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2 md:gap-3 shadow-lg"
         >
-          <CreditCard className="w-4 h-4 md:w-6 md:h-6" /> {t({ en: 'Proceed to Checkout', ar: 'المتابعة لإتمام الشراء' })}
+          <CreditCard className="w-3.5 h-3.5 md:w-6 md:h-6" /> {t({ en: 'Proceed to Checkout', ar: 'المتابعة لإتمام الشراء' })}
         </button>
       </div>
     </div>
@@ -1509,35 +1526,35 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-2 md:p-4">
-      <h1 className="text-2xl md:text-4xl font-bold mb-6 md:mb-12">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
-      <div className="space-y-4 md:space-y-6">
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-sm">
-          <h3 className="font-bold text-base md:text-lg mb-3 md:mb-4">{t({ en: 'Shipping Information', ar: 'معلومات الشحن' })}</h3>
-          <div className="space-y-3 md:space-y-4">
+    <div className="max-w-2xl mx-auto p-1 md:p-4">
+      <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
+      <div className="space-y-3 md:space-y-6">
+        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-3 md:p-6 shadow-sm">
+          <h3 className="font-bold text-sm md:text-lg mb-2 md:mb-4">{t({ en: 'Shipping Information', ar: 'معلومات الشحن' })}</h3>
+          <div className="space-y-2 md:space-y-4">
             <div>
-              <label className="text-[10px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Full Name', ar: 'الاسم الكامل' })}</label>
-              <div className="p-2.5 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-sm">{user?.displayName}</div>
+              <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Full Name', ar: 'الاسم الكامل' })}</label>
+              <div className="p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm">{user?.displayName}</div>
             </div>
-            <div className="space-y-3 md:space-y-4">
+            <div className="space-y-2 md:space-y-4">
               <div className="flex justify-between items-center mb-0.5 md:mb-1">
-                <label className="text-[10px] font-bold uppercase text-gray-400">{t({ en: 'Shipping Address', ar: 'عنوان الشحن' })}</label>
+                <label className="text-[9px] font-bold uppercase text-gray-400">{t({ en: 'Shipping Address', ar: 'عنوان الشحن' })}</label>
                 <button 
                   onClick={() => setIsAddressDrawerOpen(true)}
-                  className="text-[9px] md:text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg transition-colors"
+                  className="text-[8px] md:text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg transition-colors"
                 >
-                  <MapPin className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                  <MapPin className="w-2 h-2 md:w-3 md:h-3" />
                   {t({ en: 'Change Address', ar: 'تغيير العنوان' })}
                 </button>
               </div>
               
-              <div className="p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl border border-gray-100">
-                <p className="text-xs md:text-sm text-gray-600 leading-relaxed">
+              <div className="p-2.5 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl border border-gray-100">
+                <p className="text-[11px] md:text-sm text-gray-600 leading-relaxed">
                   {address || t({ en: 'No address selected', ar: 'لم يتم اختيار عنوان' })}
                 </p>
                 {coords && (
-                  <div className="mt-1.5 md:mt-2 flex items-center gap-1 text-[9px] md:text-[10px] text-emerald-600 font-bold">
-                    <CheckCircle2 className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                  <div className="mt-1 md:mt-2 flex items-center gap-1 text-[8px] md:text-[10px] text-emerald-600 font-bold">
+                    <CheckCircle2 className="w-2 h-2 md:w-3 md:h-3" />
                     {t({ en: 'Precise location set', ar: 'تم تحديد الموقع بدقة' })}
                   </div>
                 )}
@@ -1624,16 +1641,55 @@ const PhoneLogin = () => {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current.clear();
+        recaptchaVerifierRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      await signInWithPhone(phoneNumber);
+      const container = document.getElementById('recaptcha-container');
+      if (container) {
+        container.innerHTML = '';
+      }
+      
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch (e) {}
+        recaptchaVerifierRef.current = null;
+      }
+
+      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        badge: 'inline',
+        callback: () => {
+          console.log('Recaptcha verified');
+        }
+      });
+
+      await signInWithPhone(phoneNumber, recaptchaVerifierRef.current);
       setStep('code');
     } catch (err: any) {
+      console.error('Recaptcha init or sign in failed:', err);
       setError(err.message || 'Failed to send code');
+      if (recaptchaVerifierRef.current) {
+        try {
+          recaptchaVerifierRef.current.clear();
+        } catch (e) {}
+        recaptchaVerifierRef.current = null;
+      }
+      const container = document.getElementById('recaptcha-container');
+      if (container) container.innerHTML = '';
     } finally {
       setLoading(false);
     }
@@ -1665,6 +1721,7 @@ const PhoneLogin = () => {
         <p className="text-gray-400 text-sm mt-2">{t(config.description)}</p>
       </div>
 
+      <div id="recaptcha-container" className="flex justify-center mb-6 overflow-hidden rounded-xl"></div>
       {step === 'phone' ? (
         <form onSubmit={handleSendCode} className="space-y-4">
           <div>
@@ -1799,80 +1856,149 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
   const { user, profile, logout } = useContext(AuthContext);
   const { t, lang, setLang } = useContext(LanguageContext);
   const [activeTab, setActiveTab] = useState<'info' | 'store' | 'driver' | 'admin'>('info');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ displayName: profile.displayName, photoURL: user.photoURL });
+
+  const handleUpdateProfile = async () => {
+    try {
+      await updateProfile(user, editData);
+      setIsEditing(false);
+      alert(t({ en: 'Profile updated!', ar: 'تم تحديث الملف الشخصي!' }));
+    } catch (error) {
+      alert('Error updating profile');
+    }
+  };
 
   if (!user || !profile) return <PhoneLogin />;
 
   return (
     <div className="max-w-4xl mx-auto p-4 pb-32" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-6 md:gap-0">
-        <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-start">
-          <div className="w-24 h-24 bg-gray-100 rounded-full overflow-hidden border-4 border-white shadow-lg shrink-0">
-            {user.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <UserIcon className="w-12 h-12 m-6 text-gray-400" />
-            )}
+      <div className="flex flex-col md:flex-row items-center justify-between mb-6 md:mb-12 gap-4 md:gap-0">
+        <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6 text-center md:text-start">
+          <div className="relative group">
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-100 rounded-full overflow-hidden border-4 border-white shadow-lg shrink-0">
+              {user.photoURL ? (
+                <img src={user.photoURL || undefined} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <UserIcon className="w-10 h-10 m-5 md:w-12 md:h-12 md:m-6 text-gray-400" />
+              )}
+            </div>
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="absolute bottom-0 right-0 p-1.5 bg-black text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Settings className="w-3 h-3" />
+            </button>
           </div>
           <div>
-            <h1 className="text-3xl font-bold">{user.displayName}</h1>
-            <p className="text-gray-500">{user.email}</p>
-            <div className="flex gap-2 mt-2">
-              <span className="px-3 py-1 bg-black text-white text-[10px] font-bold uppercase rounded-full">
+            <h1 className="text-2xl md:text-3xl font-bold">{user.displayName}</h1>
+            <p className="text-sm md:text-base text-gray-500">{user.email}</p>
+            <div className="flex gap-2 mt-2 justify-center md:justify-start">
+              <span className="px-2 py-0.5 md:px-3 md:py-1 bg-black text-white text-[8px] md:text-[10px] font-bold uppercase rounded-full">
                 {profile.role}
               </span>
               {profile.isVerified && (
-                <span className="px-3 py-1 bg-green-500 text-white text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
+                <span className="px-2 py-0.5 md:px-3 md:py-1 bg-green-500 text-white text-[8px] md:text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                  <CheckCircle2 className="w-2.5 h-2.5 md:w-3 md:h-3" />
                   {t({ en: 'Verified', ar: 'موثق' })}
                 </span>
               )}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <button 
             onClick={() => setLang(lang === 'en' ? 'ar' : 'en')}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-2xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
+            className="flex items-center gap-1.5 md:gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-white border border-gray-100 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
           >
-            <Globe className="w-4 h-4" />
+            <Globe className="w-3.5 h-3.5 md:w-4 md:h-4" />
             {lang === 'en' ? 'العربية' : 'English'}
           </button>
           <button 
             onClick={logout}
-            className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all"
+            className="p-2.5 md:p-3 bg-red-50 text-red-500 rounded-xl md:rounded-2xl hover:bg-red-100 transition-all"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </div>
       </div>
 
-      <div className="flex border-b border-gray-100 mb-8 overflow-x-auto no-scrollbar">
+      <AnimatePresence>
+        {isEditing && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsEditing(false)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-3xl p-8 relative z-10 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold mb-6">{t({ en: 'Edit Profile', ar: 'تعديل الملف الشخصي' })}</h3>
+              <div className="space-y-4">
+                <ImageUpload 
+                  label="Profile Picture"
+                  path={STORAGE_PATHS.AVATARS}
+                  currentUrl={editData.photoURL || undefined}
+                  onUpload={(url) => setEditData({ ...editData, photoURL: url })}
+                />
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Display Name', ar: 'الاسم المستعار' })}</label>
+                  <input 
+                    type="text"
+                    value={editData.displayName || ''}
+                    onChange={(e) => setEditData({ ...editData, displayName: e.target.value })}
+                    className="w-full p-4 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-black"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => setIsEditing(false)}
+                    className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-xl font-bold"
+                  >
+                    {t({ en: 'Cancel', ar: 'إلغاء' })}
+                  </button>
+                  <button 
+                    onClick={handleUpdateProfile}
+                    className="flex-1 py-3 bg-black text-white rounded-xl font-bold"
+                  >
+                    {t({ en: 'Save', ar: 'حفظ' })}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex border-b border-gray-100 mb-6 md:mb-8 overflow-x-auto no-scrollbar">
         <button 
           onClick={() => setActiveTab('info')}
-          className={`px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'info' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+          className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'info' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
         >
           {t({ en: 'Info', ar: 'المعلومات' })}
         </button>
-        {(profile.role === 'store' || profile.role === 'customer' || profile.role === 'admin') && (
+        {(profile.roles?.includes('store') || profile.roles?.includes('customer') || profile.roles?.includes('admin')) && (
           <button 
             onClick={() => setActiveTab('store')}
-            className={`px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'store' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'store' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Store', ar: 'المتجر' })}
           </button>
         )}
-        {(profile.role === 'driver' || profile.role === 'customer' || profile.role === 'admin') && (
+        {(profile.roles?.includes('driver') || profile.roles?.includes('customer') || profile.roles?.includes('admin')) && (
           <button 
             onClick={() => setActiveTab('driver')}
-            className={`px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'driver' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'driver' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Driver', ar: 'السائق' })}
           </button>
         )}
-        {profile.role === 'admin' && (
+        {profile.roles?.includes('admin') && (
           <button 
             onClick={() => setActiveTab('admin')}
-            className={`px-6 py-4 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'admin' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'admin' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Admin', ar: 'المشرف' })}
           </button>
@@ -1898,6 +2024,14 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
                   <div>
                     <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">{t({ en: 'Email Address', ar: 'البريد الإلكتروني' })}</label>
                     <p className="font-medium">{user.email}</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">{t({ en: 'Roles', ar: 'الأدوار' })}</label>
+                    <div className="flex flex-wrap gap-1">
+                      {profile.roles?.map(r => (
+                        <span key={r} className="px-2 py-0.5 bg-gray-100 text-[8px] font-bold uppercase rounded-full">{r}</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1930,7 +2064,7 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
         )}
 
         {activeTab === 'store' && (
-          (profile.role === 'store' || profile.role === 'admin') ? (
+          (profile.roles?.includes('store') || profile.roles?.includes('admin')) ? (
             <StoreDashboard />
           ) : (
             <StoreRegistration />
@@ -1938,7 +2072,7 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
         )}
 
         {activeTab === 'driver' && (
-          profile.role === 'driver' ? (
+          profile.roles?.includes('driver') ? (
             <DriverDashboard />
           ) : (
             <DriverRegistration />
@@ -1980,7 +2114,14 @@ const StoreRegistration = () => {
         },
         createdAt: serverTimestamp()
       });
-      await updateDoc(doc(db, 'users', user.uid), { role: 'store' });
+      if (profile.roles?.includes('admin')) {
+        // Admins don't change role, just add to roles if not present
+        if (!profile.roles.includes('store')) {
+          await updateDoc(doc(db, 'users', user.uid), { roles: [...profile.roles, 'store'] });
+        }
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), { role: 'store', roles: [...(profile.roles || []), 'store'] });
+      }
       window.location.reload();
     } catch (error) {
       console.error(error);
@@ -2047,6 +2188,58 @@ const StoreRegistration = () => {
   );
 };
 
+const ImageUpload = ({ 
+  onUpload, 
+  currentUrl, 
+  path, 
+  label 
+}: { 
+  onUpload: (url: string) => void, 
+  currentUrl?: string, 
+  path: string, 
+  label: string 
+}) => {
+  const { t } = useContext(LanguageContext);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileName = `${Date.now()}_${file.name}`;
+      const url = await uploadImage(file, `${path}/${fileName}`);
+      onUpload(url);
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload image');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: label, ar: label })}</label>
+      <div className="flex items-center gap-4">
+        {currentUrl && (
+          <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
+            <img src={currentUrl || undefined} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </div>
+        )}
+        <label className={`flex-1 cursor-pointer p-4 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 hover:border-black transition-all flex items-center justify-center gap-2 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+          <Upload className="w-4 h-4 text-gray-400" />
+          <span className="text-sm font-bold text-gray-500">
+            {uploading ? t({ en: 'Uploading...', ar: 'جاري الرفع...' }) : t({ en: 'Choose Image', ar: 'اختر صورة' })}
+          </span>
+          <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+        </label>
+      </div>
+    </div>
+  );
+};
+
 const DriverRegistration = () => {
   const { user, profile } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
@@ -2069,7 +2262,14 @@ const DriverRegistration = () => {
         status: 'available',
         createdAt: serverTimestamp()
       });
-      await updateDoc(doc(db, 'users', user.uid), { role: 'driver' });
+      if (profile.roles?.includes('admin')) {
+        // Admins don't change role, just add to roles if not present
+        if (!profile.roles.includes('driver')) {
+          await updateDoc(doc(db, 'users', user.uid), { roles: [...profile.roles, 'driver'] });
+        }
+      } else {
+        await updateDoc(doc(db, 'users', user.uid), { role: 'driver', roles: [...(profile.roles || []), 'driver'] });
+      }
       window.location.reload();
     } catch (error) {
       console.error(error);
@@ -2118,11 +2318,50 @@ const StoreDashboard = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: '', brand: '', description: '', price: 0, discount: 0, categories: [], tags: [], image: '', stock: 10, hasVariants: false, variants: [],
     locals: { name: { en: '', ar: '' }, description: { en: '', ar: '' } }
   });
+  const [storeData, setStoreData] = useState<Partial<Store>>({});
+
+  useEffect(() => {
+    if (store) {
+      setStoreData({
+        name: store.name,
+        description: store.description,
+        location: store.location,
+        logoUrl: store.logoUrl,
+        bannerUrl: store.bannerUrl,
+        isDefault: store.isDefault,
+        locals: store.locals
+      });
+    }
+  }, [store]);
+
+  const handleUpdateStore = async () => {
+    if (!store) return;
+    try {
+      if (storeData.isDefault && !store.isDefault) {
+        // Unset other defaults if this one is being set as default
+        const storesRef = collection(db, 'stores');
+        const q = query(storesRef, where('isDefault', '==', true));
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          if (d.id !== store.id) {
+            await updateDoc(doc(db, 'stores', d.id), { isDefault: false });
+          }
+        }
+      }
+      await updateDoc(doc(db, 'stores', store.id), storeData);
+      setShowSettings(false);
+      alert(t({ en: 'Store settings updated!', ar: 'تم تحديث إعدادات المتجر!' }));
+    } catch (error) {
+      console.error('Error updating store:', error);
+      alert('Error updating store');
+    }
+  };
   const [variantAttributes, setVariantAttributes] = useState<{ type: string, values: string[] }[]>([]);
 
   const generateVariants = () => {
@@ -2152,7 +2391,7 @@ const StoreDashboard = () => {
 
   useEffect(() => {
     if (!user || !profile) return;
-    const storeId = profile.role === 'admin' ? 'default-store' : user.uid;
+    const storeId = profile.roles?.includes('admin') ? 'default-store' : user.uid;
     
     const unsubStore = onSnapshot(doc(db, 'stores', storeId), (snap) => {
       if (snap.exists()) {
@@ -2183,12 +2422,12 @@ const StoreDashboard = () => {
 
   const handleSave = async () => {
     if (!user || !profile) return;
-    const storeId = profile.role === 'admin' ? 'default-store' : user.uid;
+    const storeId = profile.roles?.includes('admin') ? 'default-store' : user.uid;
     try {
       const productData = {
         ...newProduct,
         storeId,
-        status: profile.role === 'admin' ? 'published' : 'review',
+        status: profile.roles?.includes('admin') ? 'published' : 'review',
         locals: {
           name: { en: newProduct.locals?.name.en || newProduct.name || '', ar: newProduct.locals?.name.ar || newProduct.name || '' },
           description: { en: newProduct.locals?.description.en || newProduct.description || '', ar: newProduct.locals?.description.ar || newProduct.description || '' }
@@ -2222,7 +2461,15 @@ const StoreDashboard = () => {
       )}
 
         <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">{t({ en: 'My Products', ar: 'منتجاتي' })}</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-xl font-bold">{t({ en: 'My Products', ar: 'منتجاتي' })}</h2>
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-all"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
         <button 
           onClick={() => {
             setEditingProduct(null);
@@ -2243,7 +2490,7 @@ const StoreDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {products.map(product => (
           <div key={product.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex gap-4 relative group">
-            <img src={product.image} alt={product.name} className="w-20 h-20 rounded-xl object-cover" />
+            <img src={product.image || undefined} alt={product.name} className="w-20 h-20 rounded-xl object-cover" referrerPolicy="no-referrer" />
             <div className="flex-1">
               <h4 className="font-bold">{t(product.locals.name)}</h4>
               <p className="text-xs text-gray-500">{product.brand}</p>
@@ -2295,6 +2542,96 @@ const StoreDashboard = () => {
       </div>
 
       <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowSettings(false)}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-xl rounded-3xl p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh]"
+            >
+              <h3 className="text-2xl font-bold mb-6">{t({ en: 'Store Settings', ar: 'إعدادات المتجر' })}</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Store Name (EN)', ar: 'اسم المتجر (EN)' })}</label>
+                    <input 
+                      type="text"
+                      value={storeData.locals?.name.en || ''}
+                      onChange={(e) => setStoreData({ ...storeData, name: e.target.value, locals: { ...storeData.locals!, name: { ...storeData.locals!.name, en: e.target.value } } })}
+                      className="w-full p-4 bg-gray-50 rounded-xl border-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Store Name (AR)', ar: 'اسم المتجر (AR)' })}</label>
+                    <input 
+                      type="text"
+                      value={storeData.locals?.name.ar || ''}
+                      onChange={(e) => setStoreData({ ...storeData, locals: { ...storeData.locals!, name: { ...storeData.locals!.name, ar: e.target.value } } })}
+                      className="w-full p-4 bg-gray-50 rounded-xl border-none text-right"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Location', ar: 'الموقع' })}</label>
+                  <input 
+                    type="text"
+                    value={storeData.location || ''}
+                    onChange={(e) => setStoreData({ ...storeData, location: e.target.value })}
+                    className="w-full p-4 bg-gray-50 rounded-xl border-none"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ImageUpload 
+                    label="Store Logo"
+                    path={STORAGE_PATHS.STORES}
+                    currentUrl={storeData.logoUrl}
+                    onUpload={(url) => setStoreData({ ...storeData, logoUrl: url })}
+                  />
+                  <ImageUpload 
+                    label="Store Banner"
+                    path={STORAGE_PATHS.STORES}
+                    currentUrl={storeData.bannerUrl}
+                    onUpload={(url) => setStoreData({ ...storeData, bannerUrl: url })}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-2">
+                    <StoreIcon className="w-5 h-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm font-bold">{t({ en: 'Default Store', ar: 'المتجر الافتراضي' })}</p>
+                      <p className="text-[10px] text-gray-400">{t({ en: 'Set this as the primary store for the app', ar: 'تعيين هذا كمتجر أساسي للتطبيق' })}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setStoreData({ ...storeData, isDefault: !storeData.isDefault })}
+                    className={`w-12 h-6 rounded-full transition-all relative ${storeData.isDefault ? 'bg-black' : 'bg-gray-200'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${storeData.isDefault ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => setShowSettings(false)}
+                    className="flex-1 py-3 bg-gray-100 text-gray-500 rounded-xl font-bold"
+                  >
+                    {t({ en: 'Cancel', ar: 'إلغاء' })}
+                  </button>
+                  <button 
+                    onClick={handleUpdateStore}
+                    className="flex-1 py-3 bg-black text-white rounded-xl font-bold"
+                  >
+                    {t({ en: 'Save Settings', ar: 'حفظ الإعدادات' })}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showAdd && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
             <motion.div 
@@ -2383,14 +2720,12 @@ const StoreDashboard = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Image URL', ar: 'رابط الصورة' })}</label>
-                  <input 
-                    type="text"
-                    value={newProduct.image} onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
-                    className="w-full p-4 bg-gray-50 rounded-xl border-none"
-                  />
-                </div>
+                <ImageUpload 
+                  label="Product Image"
+                  path={STORAGE_PATHS.PRODUCTS}
+                  currentUrl={newProduct.image || undefined}
+                  onUpload={(url) => setNewProduct({ ...newProduct, image: url })}
+                />
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase text-gray-400 ml-2">{t({ en: 'Categories', ar: 'الفئات' })}</label>
@@ -2826,10 +3161,15 @@ const AdminPanel = () => {
   const [stores, setStores] = useState<Store[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
   const [tags, setTags] = useState<Tag[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'promotions' | 'categories' | 'tags' | 'store-settings' | 'app-settings'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings'>('products');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [adminMessage, setAdminMessage] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [promoTitleEn, setPromoTitleEn] = useState('');
   const [promoTitleAr, setPromoTitleAr] = useState('');
   const [promoBodyEn, setPromoBodyEn] = useState('');
@@ -2863,7 +3203,7 @@ const AdminPanel = () => {
   const [defaultStore, setDefaultStore] = useState<Store | null>(null);
 
   useEffect(() => {
-    if (profile?.role !== 'admin') return;
+    if (!profile?.roles?.includes('admin')) return;
 
     const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('createdAt', 'desc')), (snap) => {
       setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -2884,6 +3224,10 @@ const AdminPanel = () => {
       setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
 
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
     const unsubCats = onSnapshot(collection(db, 'categories'), (snap) => {
       setCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'categories'));
@@ -2903,6 +3247,7 @@ const AdminPanel = () => {
       unsubStores();
       unsubDrivers();
       unsubOrders();
+      unsubUsers();
       unsubCats();
       unsubTags();
       unsubSettings();
@@ -2993,8 +3338,16 @@ const AdminPanel = () => {
     try {
       const catData = {
         ...newCategory,
-        createdAt: serverTimestamp()
+        locals: {
+          title: { en: newCategory.locals?.title.en || newCategory.title || '', ar: newCategory.locals?.title.ar || newCategory.title || '' },
+          description: { en: newCategory.locals?.description.en || newCategory.description || '', ar: newCategory.locals?.description.ar || newCategory.description || '' }
+        },
+        updatedAt: serverTimestamp()
       };
+
+      if (!editingCategory) {
+        (catData as any).createdAt = serverTimestamp();
+      }
 
       if (editingCategory) {
         await updateDoc(doc(db, 'categories', editingCategory.id), catData);
@@ -3113,6 +3466,44 @@ const AdminPanel = () => {
       }
     } catch (error) {
       console.error('Error verifying driver:', error);
+    }
+  };
+
+  const toggleUserBan = async (userId: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { isBanned: !currentStatus });
+    } catch (error) {
+      console.error('Error toggling ban:', error);
+    }
+  };
+
+  const updateUserRoles = async (userId: string, newRoles: ('admin' | 'customer' | 'store' | 'driver')[]) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { roles: newRoles });
+    } catch (error) {
+      console.error('Error updating roles:', error);
+    }
+  };
+
+  const sendAdminMessage = async () => {
+    if (!selectedUser || !adminMessage.trim()) return;
+    setIsSendingMessage(true);
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        userId: selectedUser.uid,
+        title: { en: 'Message from Admin', ar: 'رسالة من المشرف' },
+        body: { en: adminMessage, ar: adminMessage },
+        type: 'system',
+        read: false,
+        createdAt: serverTimestamp()
+      });
+      setAdminMessage('');
+      setSelectedUser(null);
+      alert('Message sent successfully!');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -3383,7 +3774,7 @@ const AdminPanel = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap gap-4 border-b border-gray-100 pb-4">
+      <div className="flex overflow-x-auto gap-2 md:gap-4 border-b border-gray-100 pb-4 no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth">
         {[
           { id: 'products', label: t({ en: 'Products', ar: 'المنتجات' }), icon: Package },
           { id: 'categories', label: t({ en: 'Categories', ar: 'الأقسام' }), icon: ClipboardList },
@@ -3391,14 +3782,14 @@ const AdminPanel = () => {
           { id: 'stores', label: t({ en: 'Stores', ar: 'المتاجر' }), icon: StoreIcon },
           { id: 'drivers', label: t({ en: 'Drivers', ar: 'السائقين' }), icon: Car },
           { id: 'orders', label: t({ en: 'Orders', ar: 'الطلبات' }), icon: ShoppingBag },
+          { id: 'users', label: t({ en: 'Users', ar: 'المستخدمين' }), icon: Users },
           { id: 'promotions', label: t({ en: 'Promotions', ar: 'العروض' }), icon: Bell },
-          { id: 'store-settings', label: t({ en: 'Store Settings', ar: 'إعدادات المتجر' }), icon: StoreIcon },
           { id: 'app-settings', label: t({ en: 'App Settings', ar: 'إعدادات التطبيق' }), icon: Settings }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all ${
+            className={`flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all whitespace-nowrap ${
               activeSubTab === tab.id ? 'bg-black text-white shadow-lg' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
             }`}
           >
@@ -3465,7 +3856,7 @@ const AdminPanel = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredAdminProducts.map(p => (
               <div key={p.id} className="bg-white border border-gray-100 rounded-3xl p-6 flex gap-6 items-center shadow-sm relative group">
-                <img src={p.image} className="w-24 h-24 object-cover rounded-2xl" referrerPolicy="no-referrer" />
+                <img src={p.image || undefined} className="w-24 h-24 object-cover rounded-2xl" referrerPolicy="no-referrer" />
                 <div className="flex-1">
                   <h3 className="font-bold text-lg">{t(p.locals.name)}</h3>
                   <p className="text-sm text-gray-400 font-medium">{p.brand}</p>
@@ -3631,10 +4022,11 @@ const AdminPanel = () => {
                       value={newProduct.stock || 0} onChange={(e) => setNewProduct({...newProduct, stock: parseInt(e.target.value) || 0})}
                       className="w-full p-4 bg-gray-50 rounded-xl border-none"
                     />
-                    <input 
-                      type="text" placeholder={t({ en: 'Image URL', ar: 'رابط الصورة' })}
-                      value={newProduct.image} onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
-                      className="w-full p-4 bg-gray-50 rounded-xl border-none"
+                    <ImageUpload 
+                      label="Product Image"
+                      path={STORAGE_PATHS.PRODUCTS}
+                      currentUrl={newProduct.image || undefined}
+                      onUpload={(url) => setNewProduct({ ...newProduct, image: url })}
                     />
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Categories', ar: 'الأقسام' })}</label>
@@ -3887,7 +4279,7 @@ const AdminPanel = () => {
                   </div>
                 </div>
                 {tag.bannerImage && (
-                  <img src={tag.bannerImage} className="w-full h-32 object-cover rounded-xl mb-4" referrerPolicy="no-referrer" />
+                  <img src={tag.bannerImage || undefined} className="w-full h-32 object-cover rounded-xl mb-4" referrerPolicy="no-referrer" />
                 )}
                 {tag.discountType !== 'none' && (
                   <p className="text-sm font-bold text-green-600">
@@ -3942,10 +4334,11 @@ const AdminPanel = () => {
                         className="w-full p-4 bg-gray-50 rounded-xl border-none text-right"
                       />
                     </div>
-                    <input 
-                      type="text" placeholder={t({ en: 'Banner Image URL', ar: 'رابط صورة البانر' })}
-                      value={newTag.bannerImage} onChange={(e) => setNewTag({...newTag, bannerImage: e.target.value})}
-                      className="w-full p-4 bg-gray-50 rounded-xl border-none"
+                    <ImageUpload 
+                      label="Banner Image"
+                      path={STORAGE_PATHS.TAGS}
+                      currentUrl={newTag.bannerImage || undefined}
+                      onUpload={(url) => setNewTag({ ...newTag, bannerImage: url })}
                     />
                     <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -4080,10 +4473,11 @@ const AdminPanel = () => {
                         className="w-full p-4 bg-gray-50 rounded-xl border-none text-right min-h-[80px]"
                       />
                     </div>
-                    <input 
-                      type="text" placeholder={t({ en: 'Banner Image URL', ar: 'رابط صورة الغلاف' })}
-                      value={newCategory.bannerImageUrl} onChange={(e) => setNewCategory({...newCategory, bannerImageUrl: e.target.value})}
-                      className="w-full p-4 bg-gray-50 rounded-xl border-none"
+                    <ImageUpload 
+                      label="Banner Image"
+                      path={STORAGE_PATHS.CATEGORIES}
+                      currentUrl={newCategory.bannerImageUrl || undefined}
+                      onUpload={(url) => setNewCategory({ ...newCategory, bannerImageUrl: url })}
                     />
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -4119,89 +4513,76 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {activeSubTab === 'store-settings' && (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold">{t({ en: 'Store Settings', ar: 'إعدادات المتجر' })}</h2>
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase ml-2">{t({ en: 'Store Name', ar: 'اسم المتجر' })}</label>
-                <input
-                  type="text"
-                  value={defaultStore?.name || ''}
-                  onChange={(e) => setDefaultStore(prev => prev ? {...prev, name: e.target.value} : null)}
-                  className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase ml-2">{t({ en: 'Store Description', ar: 'وصف المتجر' })}</label>
-                <textarea
-                  value={defaultStore?.description || ''}
-                  onChange={(e) => setDefaultStore(prev => prev ? {...prev, description: e.target.value} : null)}
-                  className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium min-h-[120px]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-400 uppercase ml-2">{t({ en: 'Location', ar: 'الموقع' })}</label>
-                <input
-                  type="text"
-                  value={defaultStore?.location || ''}
-                  onChange={(e) => setDefaultStore(prev => prev ? {...prev, location: e.target.value} : null)}
-                  className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
-                />
-              </div>
-            </div>
-            <button
-              onClick={() => handleSaveStoreSettings({
-                name: defaultStore?.name,
-                description: defaultStore?.description,
-                location: defaultStore?.location
-              })}
-              className="w-full py-5 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg active:scale-[0.98]"
-            >
-              {t({ en: 'Save Settings', ar: 'حفظ الإعدادات' })}
-            </button>
-          </div>
-        </div>
-      )}
-
       {activeSubTab === 'stores' && (
         <div className="space-y-6">
           <h2 className="text-2xl font-bold">{t({ en: 'Store Verification & Management', ar: 'توثيق وإدارة المتاجر' })}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {stores.map(store => (
-              <div key={store.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-lg">{t(store.locals.name)}</h3>
-                  <p className="text-sm text-gray-400">{store.location}</p>
-                  <div className="mt-2 flex items-center gap-3">
-                    {store.isVerified ? (
-                      <span className="text-xs font-bold text-green-500 flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> {t({ en: 'Verified', ar: 'موثق' })}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold text-orange-500">{t({ en: 'Pending Verification', ar: 'قيد التوثيق' })}</span>
-                    )}
-                    <button 
-                      onClick={() => {
-                        const msg = prompt(t({ en: 'Message to Store Owner:', ar: 'رسالة لصاحب المتجر:' }), store.adminMessage || '');
-                        if (msg !== null) handleUpdateStoreMessage(store.id, msg);
-                      }}
-                      className="text-gray-400 hover:text-black transition-colors"
-                      title={t({ en: 'Send Message', ar: 'إرسال رسالة' })}
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                    </button>
+              <div key={store.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center group relative overflow-hidden">
+                <div className="flex items-center gap-4">
+                  {store.logoUrl ? (
+                    <img src={store.logoUrl || undefined} className="w-16 h-16 rounded-2xl object-cover border border-gray-100" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
+                      <StoreIcon className="w-8 h-8" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-lg">{t(store.locals.name)}</h3>
+                      {store.isDefault && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-black text-white rounded-full uppercase">Default</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-400">{store.location}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      {store.isVerified ? (
+                        <span className="text-xs font-bold text-green-500 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> {t({ en: 'Verified', ar: 'موثق' })}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-orange-500">{t({ en: 'Pending Verification', ar: 'قيد التوثيق' })}</span>
+                      )}
+                      <button 
+                        onClick={() => {
+                          const msg = prompt(t({ en: 'Message to Store Owner:', ar: 'رسالة لصاحب المتجر:' }), store.adminMessage || '');
+                          if (msg !== null) handleUpdateStoreMessage(store.id, msg);
+                        }}
+                        className="text-gray-400 hover:text-black transition-colors"
+                        title={t({ en: 'Send Message', ar: 'إرسال رسالة' })}
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-                {!store.isVerified && (
+                <div className="flex flex-col gap-2">
+                  {!store.isVerified && (
+                    <button 
+                      onClick={() => verifyStore(store.id)}
+                      className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-gray-800"
+                    >
+                      {t({ en: 'Verify', ar: 'توثيق' })}
+                    </button>
+                  )}
                   <button 
-                    onClick={() => verifyStore(store.id)}
-                    className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-gray-800"
+                    onClick={async () => {
+                      // If setting to default, unset others first (optional but good for UX)
+                      if (!store.isDefault) {
+                        const defaultStores = stores.filter(s => s.isDefault);
+                        for (const ds of defaultStores) {
+                          await updateDoc(doc(db, 'stores', ds.id), { isDefault: false });
+                        }
+                      }
+                      await updateDoc(doc(db, 'stores', store.id), { isDefault: !store.isDefault });
+                    }}
+                    className={`px-6 py-2 rounded-full text-xs font-bold transition-all ${
+                      store.isDefault ? 'bg-gray-100 text-gray-500' : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                    }`}
                   >
-                    {t({ en: 'Verify', ar: 'توثيق' })}
+                    {store.isDefault ? t({ en: 'Unset Default', ar: 'إلغاء الافتراضي' }) : t({ en: 'Set Default', ar: 'تعيين كافتراضي' })}
                   </button>
-                )}
+                </div>
               </div>
             ))}
           </div>
@@ -4322,6 +4703,134 @@ const AdminPanel = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeSubTab === 'users' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">{t({ en: 'User Management', ar: 'إدارة المستخدمين' })}</h2>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input 
+              type="text" placeholder={t({ en: 'Search users by name or email...', ar: 'البحث عن المستخدمين بالاسم أو البريد...' })}
+              value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-black outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {users.filter(u => 
+              (u.displayName || '').toLowerCase().includes(userSearchQuery.toLowerCase()) || 
+              (u.email || '').toLowerCase().includes(userSearchQuery.toLowerCase())
+            ).map(u => (
+              <div key={u.uid} className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm relative group">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-400">
+                      {u.displayName ? u.displayName[0] : '?'}
+                    </div>
+                    <div>
+                      <h3 className="font-bold">{u.displayName || 'No Name'}</h3>
+                      <p className="text-xs text-gray-400">{u.email}</p>
+                    </div>
+                  </div>
+                  {u.isBanned && (
+                    <span className="px-2 py-1 bg-red-100 text-red-600 text-[10px] font-bold rounded-full uppercase">
+                      {t({ en: 'Banned', ar: 'محظور' })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">{t({ en: 'Roles', ar: 'الأدوار' })}</label>
+                    <div className="flex flex-wrap gap-1">
+                      {['admin', 'customer', 'store', 'driver'].map(role => (
+                        <button
+                          key={role}
+                          onClick={() => {
+                            const roles = u.roles || [];
+                            const newRoles = roles.includes(role as any) 
+                              ? roles.filter(r => r !== role)
+                              : [...roles, role as any];
+                            updateUserRoles(u.uid, newRoles);
+                          }}
+                          className={`px-2 py-1 rounded-full text-[8px] font-bold uppercase transition-all ${
+                            (u.roles || []).includes(role as any) 
+                              ? 'bg-black text-white' 
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          {role}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      onClick={() => toggleUserBan(u.uid, !!u.isBanned)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
+                        u.isBanned ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'
+                      }`}
+                    >
+                      {u.isBanned ? t({ en: 'Unban', ar: 'إلغاء الحظر' }) : t({ en: 'Ban', ar: 'حظر' })}
+                    </button>
+                    <button 
+                      onClick={() => setSelectedUser(u)}
+                      className="flex-1 py-2 bg-blue-100 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-200 transition-all"
+                    >
+                      {t({ en: 'Message', ar: 'رسالة' })}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black">{t({ en: 'Send Message', ar: 'إرسال رسالة' })}</h2>
+              <button onClick={() => setSelectedUser(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">
+                {t({ en: 'To:', ar: 'إلى:' })} <span className="font-bold text-black">{selectedUser.displayName}</span>
+              </p>
+              <textarea 
+                value={adminMessage}
+                onChange={(e) => setAdminMessage(e.target.value)}
+                placeholder={t({ en: 'Type your message here...', ar: 'اكتب رسالتك هنا...' })}
+                className="w-full h-32 p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm focus:ring-2 focus:ring-black outline-none resize-none"
+              />
+              <button 
+                onClick={sendAdminMessage}
+                disabled={isSendingMessage || !adminMessage.trim()}
+                className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSendingMessage ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    {t({ en: 'Send Message', ar: 'إرسال الرسالة' })}
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 
@@ -4477,46 +4986,46 @@ const OrdersPage = () => {
   }, [user]);
 
   return (
-    <div className="max-w-4xl mx-auto p-2 md:p-4">
-      <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'My Orders', ar: 'طلباتي' })}</h1>
-      <div className="space-y-3 md:space-y-6">
+    <div className="max-w-4xl mx-auto p-1.5 md:p-4">
+      <h1 className="text-xl md:text-4xl font-bold mb-3 md:mb-12">{t({ en: 'My Orders', ar: 'طلباتي' })}</h1>
+      <div className="space-y-2 md:space-y-6">
         {orders.map(order => (
-          <div key={order.id} className="bg-white border border-gray-100 rounded-lg md:rounded-2xl p-3 md:p-6 shadow-sm">
-            <div className="flex justify-between items-start mb-2 md:mb-4">
+          <div key={order.id} className="bg-white border border-gray-100 rounded-lg md:rounded-2xl p-2.5 md:p-6 shadow-sm">
+            <div className="flex justify-between items-start mb-1.5 md:mb-4">
               <div>
-                <div className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 md:mb-1">{t({ en: 'Order ID', ar: 'رقم الطلب' })}</div>
-                <div className="font-mono text-[9px] md:text-sm">{order.id}</div>
+                <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 md:mb-1">{t({ en: 'Order ID', ar: 'رقم الطلب' })}</div>
+                <div className="font-mono text-[8px] md:text-sm">{order.id}</div>
               </div>
-              <div className={`px-1.5 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase ${
+              <div className={`px-1 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-bold uppercase ${
                 order.status === 'paid' ? 'bg-green-100 text-green-600' : 
                 order.status === 'pending' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600'
               }`}>
                 {t({ en: order.status, ar: order.status === 'paid' ? 'مدفوع' : order.status === 'pending' ? 'قيد الانتظار' : 'فشل' })}
               </div>
             </div>
-            <div className="space-y-1 md:space-y-2">
+            <div className="space-y-0.5 md:space-y-2">
               {order.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between text-[10px] md:text-sm text-gray-600">
+                <div key={idx} className="flex justify-between text-[9px] md:text-sm text-gray-600">
                   <span>{item.name} × {item.quantity}</span>
                   <span>{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
                 </div>
               ))}
             </div>
-            <div className="mt-2 md:mt-4 pt-2 md:pt-4 border-t flex justify-between items-center">
-              <span className="text-gray-400 text-[9px] md:text-xs">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
-              <span className="font-bold text-sm md:text-lg">{order.totalAmount.toFixed(2)} {t(config.currency.symbol)}</span>
+            <div className="mt-1.5 md:mt-4 pt-1.5 md:pt-4 border-t flex justify-between items-center">
+              <span className="text-gray-400 text-[8px] md:text-xs">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
+              <span className="font-bold text-xs md:text-lg">{order.totalAmount.toFixed(2)} {t(config.currency.symbol)}</span>
             </div>
             
             {order.deliveryStatus === 'picked_up' && order.driverId && (
-              <div className="mt-3 md:mt-6">
+              <div className="mt-2 md:mt-6">
                 <button 
                   onClick={() => {
                     setTrackingOrder(order);
                     setIsTrackingOpen(true);
                   }}
-                  className="w-full py-2.5 md:py-4 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl font-bold text-[10px] md:text-sm hover:bg-emerald-100 transition-all flex items-center justify-center gap-1.5 md:gap-2 border border-emerald-100"
+                  className="w-full py-2 md:py-4 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl font-bold text-[9px] md:text-sm hover:bg-emerald-100 transition-all flex items-center justify-center gap-1 md:gap-2 border border-emerald-100"
                 >
-                  <Navigation className="w-3.5 h-3.5 md:w-4 md:h-4 animate-pulse" />
+                  <Navigation className="w-3 h-3 md:w-4 md:h-4 animate-pulse" />
                   {t({ en: 'Track Real-time Delivery', ar: 'تتبع التوصيل المباشر' })}
                 </button>
               </div>
@@ -4893,7 +5402,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -4941,6 +5450,11 @@ export default function App() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const p = docSnap.data() as UserProfile;
+          // Migration: if roles doesn't exist, create it from role
+          if (!p.roles) {
+            p.roles = [p.role || 'customer'];
+            await updateDoc(docRef, { roles: p.roles });
+          }
           setProfile(p);
           if (p.language && p.language !== lang) {
             setLangState(p.language);
@@ -4952,7 +5466,9 @@ export default function App() {
             email: u.email || '',
             displayName: u.displayName || '',
             role: u.email === 'facegoogl@gmail.com' ? 'admin' : 'customer',
-            language: lang
+            roles: u.email === 'facegoogl@gmail.com' ? ['admin', 'customer'] : ['customer'],
+            language: lang,
+            createdAt: serverTimestamp()
           };
           await setDoc(docRef, newProfile);
           setProfile(newProfile);
@@ -4994,12 +5510,12 @@ export default function App() {
     await signInWithPopup(auth, provider);
   };
 
-  const signInWithPhone = async (phoneNumber: string) => {
+  const signInWithPhone = async (phoneNumber: string, verifier?: RecaptchaVerifier) => {
     try {
-      const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible'
-      });
-      const result = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+      if (!verifier) {
+        throw new Error('Recaptcha verifier not initialized');
+      }
+      const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
       setConfirmationResult(result);
     } catch (error) {
       console.error('Phone sign in failed', error);
@@ -5161,17 +5677,38 @@ export default function App() {
   return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>
       <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
-        <NotificationContext.Provider value={{ 
-          notifications, 
-          unreadCount, 
-          markAsRead, 
-          markAllAsRead, 
-          requestPermission: requestNotificationPermission 
-        }}>
+        {profile?.isBanned ? (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-center">
+            <div className="max-w-md space-y-6">
+              <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
+                <ShieldX className="w-10 h-10" />
+              </div>
+              <h1 className="text-3xl font-black">{t({ en: 'Account Banned', ar: 'الحساب محظور' })}</h1>
+              <p className="text-gray-500 leading-relaxed">
+                {t({ 
+                  en: 'Your account has been suspended for violating our terms of service. If you believe this is a mistake, please contact support.', 
+                  ar: 'تم تعليق حسابك لانتهاك شروط الخدمة الخاصة بنا. إذا كنت تعتقد أن هذا خطأ، يرجى الاتصال بالدعم.' 
+                })}
+              </p>
+              <button 
+                onClick={logout}
+                className="px-8 py-4 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-all"
+              >
+                {t({ en: 'Sign Out', ar: 'تسجيل الخروج' })}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <NotificationContext.Provider value={{ 
+            notifications, 
+            unreadCount, 
+            markAsRead, 
+            markAllAsRead, 
+            requestPermission: requestNotificationPermission 
+          }}>
           <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, total }}>
             <LocationProvider>
               <WishlistProvider>
-              <div id="recaptcha-container"></div>
               <div 
                 className="min-h-screen bg-white font-sans text-black selection:bg-black selection:text-white"
                 dir={lang === 'ar' ? 'rtl' : 'ltr'}
@@ -5206,7 +5743,7 @@ export default function App() {
                       {currentPage === 'home' && (
                         <div className="px-1 md:px-4">
                           {/* Search Bar Section */}
-                          <div className="py-2 md:py-8 flex justify-center">
+                          <div className="py-1 md:py-8 flex justify-center">
                             <div className="relative w-full max-w-2xl">
                               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                               <input 
@@ -5214,37 +5751,37 @@ export default function App() {
                                 placeholder={t({ en: 'Search products, brands...', ar: 'البحث عن المنتجات، الماركات...' })}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 md:pl-12 pr-4 py-2.5 md:py-5 bg-gray-50 rounded-xl md:rounded-[2rem] border-none focus:ring-2 focus:ring-black text-sm md:text-lg shadow-sm"
+                                className="w-full pl-10 md:pl-12 pr-4 py-2 md:py-5 bg-gray-50 rounded-xl md:rounded-[2rem] border-none focus:ring-2 focus:ring-black text-sm md:text-lg shadow-sm"
                               />
                             </div>
                           </div>
 
                           {/* Promoted Tags (Banners) */}
                           {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && tags.filter(t => t.isPromoted).length > 0 && (
-                            <div className="mb-6 md:mb-16 space-y-3 md:space-y-8">
+                            <div className="mb-4 md:mb-16 space-y-2 md:space-y-8">
                               {tags.filter(t => t.isPromoted).map(tag => (
                                 <div 
                                   key={tag.id} 
-                                  className="relative h-36 md:h-64 rounded-2xl md:rounded-[3rem] overflow-hidden group cursor-pointer shadow-xl"
+                                  className="relative h-32 md:h-64 rounded-2xl md:rounded-[3rem] overflow-hidden group cursor-pointer shadow-xl"
                                   onClick={() => setSelectedTagId(tag.id)}
                                 >
                                   <img 
-                                    src={tag.bannerImage} 
+                                    src={tag.bannerImage || undefined} 
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
                                     referrerPolicy="no-referrer"
                                   />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-4 md:p-12">
-                                    <div className="absolute top-3 left-3 md:top-8 md:left-8 flex items-center gap-2 bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-4 md:py-2 rounded-full border border-white/20">
-                                      <span className="text-white text-[7px] md:text-[10px] font-black uppercase tracking-[0.2em]">Offers</span>
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-3 md:p-12">
+                                    <div className="absolute top-2 left-2 md:top-8 md:left-8 flex items-center gap-2 bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-4 md:py-2 rounded-full border border-white/20">
+                                      <span className="text-white text-[6px] md:text-[10px] font-black uppercase tracking-[0.2em]">Offers</span>
                                     </div>
-                                    <div className="flex items-center gap-2 md:gap-4 mb-1 md:mb-4">
-                                      <div className="p-1.5 md:p-3 bg-white/20 backdrop-blur-md rounded-lg md:rounded-2xl">
-                                        <TagIcon className="w-4 h-4 md:w-8 md:h-8 text-white" />
+                                    <div className="flex items-center gap-2 md:gap-4 mb-0.5 md:mb-4">
+                                      <div className="p-1 md:p-3 bg-white/20 backdrop-blur-md rounded-lg md:rounded-2xl">
+                                        <TagIcon className="w-3 h-3 md:w-8 md:h-8 text-white" />
                                       </div>
-                                      <h3 className="text-white text-xl md:text-5xl font-black tracking-tighter uppercase italic">{t(tag.title)}</h3>
+                                      <h3 className="text-white text-lg md:text-5xl font-black tracking-tighter uppercase italic">{t(tag.title)}</h3>
                                     </div>
                                     {tag.discountType !== 'none' && (
-                                      <div className="bg-white text-black px-3 py-1 md:px-6 md:py-2 rounded-full w-fit font-black text-xs md:text-xl shadow-lg">
+                                      <div className="bg-white text-black px-2 py-0.5 md:px-6 md:py-2 rounded-full w-fit font-black text-[10px] md:text-xl shadow-lg">
                                         {tag.discountType === 'percentage' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
                                       </div>
                                     )}
@@ -5255,54 +5792,56 @@ export default function App() {
                           )}
 
                           {/* Public Tags Section */}
-                          <div className="mb-6 md:mb-12 overflow-x-auto pb-2 md:pb-4 no-scrollbar">
-                            <div className="flex gap-1.5 md:gap-4">
-                              <button
-                                onClick={() => setSelectedTagId('')}
-                                className={`flex-shrink-0 flex items-center gap-1.5 md:gap-3 px-3 py-2 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
-                                  selectedTagId === '' 
-                                    ? 'bg-black text-white border-black shadow-lg' 
-                                    : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
-                                }`}
-                              >
-                                <span className="font-bold text-[10px] md:text-base whitespace-nowrap">{t({ en: 'All Offers', ar: 'جميع العروض' })}</span>
-                              </button>
-                              {tags.filter(t => t.isPublic).map(tag => (
+                          {tags.filter(t => t.isPublic).length > 0 && (
+                            <div className="mb-4 md:mb-12 overflow-x-auto pb-1 md:pb-4 no-scrollbar">
+                              <div className="flex gap-1 md:gap-4">
                                 <button
-                                  key={tag.id}
-                                  onClick={() => setSelectedTagId(tag.id)}
-                                  className={`flex-shrink-0 flex items-center gap-1.5 md:gap-3 px-3 py-2 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
-                                    selectedTagId === tag.id 
-                                      ? 'bg-black text-white border-black shadow-lg scale-105' 
+                                  onClick={() => setSelectedTagId('')}
+                                  className={`flex-shrink-0 flex items-center gap-1 md:gap-3 px-2.5 py-1.5 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
+                                    selectedTagId === '' 
+                                      ? 'bg-black text-white border-black shadow-lg' 
                                       : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
                                   }`}
                                 >
-                                  <TagIcon className="w-3.5 h-3.5 md:w-5 md:h-5" />
-                                  <span className="font-bold text-[10px] md:text-base whitespace-nowrap">{t(tag.title)}</span>
+                                  <span className="font-bold text-[9px] md:text-base whitespace-nowrap">{t({ en: 'All Offers', ar: 'جميع العروض' })}</span>
                                 </button>
-                              ))}
+                                {tags.filter(t => t.isPublic).map(tag => (
+                                  <button
+                                    key={tag.id}
+                                    onClick={() => setSelectedTagId(tag.id)}
+                                    className={`flex-shrink-0 flex items-center gap-1 md:gap-3 px-2.5 py-1.5 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
+                                      selectedTagId === tag.id 
+                                        ? 'bg-black text-white border-black shadow-lg scale-105' 
+                                        : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
+                                    }`}
+                                  >
+                                    <TagIcon className="w-3 h-3 md:w-5 md:h-5" />
+                                    <span className="font-bold text-[9px] md:text-base whitespace-nowrap">{t(tag.title)}</span>
+                                  </button>
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
 
                           {/* Featured Categories */}
                           {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
-                            <div className="mb-6 md:mb-16">
-                              <h2 className="text-lg md:text-3xl font-black tracking-tight mb-4 md:mb-10">{t({ en: 'Featured Categories', ar: 'الفئات المميزة' })}</h2>
-                              <div className="space-y-6 md:space-y-16">
+                            <div className="mb-4 md:mb-16">
+                              <h2 className="text-base md:text-3xl font-black tracking-tight mb-3 md:mb-10">{t({ en: 'Featured Categories', ar: 'الفئات المميزة' })}</h2>
+                              <div className="space-y-4 md:space-y-16">
                                 {featuredCategories.map(cat => (
-                                  <div key={cat.id} className="space-y-3 md:space-y-8">
+                                  <div key={cat.id} className="space-y-2 md:space-y-8">
                                     <div 
-                                      className="relative h-28 md:h-48 rounded-xl md:rounded-[2.5rem] overflow-hidden group cursor-pointer"
+                                      className="relative h-24 md:h-48 rounded-xl md:rounded-[2.5rem] overflow-hidden group cursor-pointer"
                                       onClick={() => setSelectedCategoryId(cat.id)}
                                     >
                                       <img 
-                                        src={cat.bannerImageUrl} 
+                                        src={cat.bannerImageUrl || undefined} 
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                                         referrerPolicy="no-referrer"
                                       />
-                                      <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex flex-col justify-center p-4 md:p-10">
-                                        <h3 className="text-white text-lg md:text-4xl font-black tracking-tighter">{t(cat.locals.title)}</h3>
-                                        <p className="text-white/80 text-[10px] md:text-lg font-medium max-w-md line-clamp-1 md:line-clamp-2">{t(cat.locals.description)}</p>
+                                      <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent flex flex-col justify-center p-3 md:p-10">
+                                        <h3 className="text-white text-base md:text-4xl font-black tracking-tighter">{t(cat.locals.title)}</h3>
+                                        <p className="text-white/80 text-[9px] md:text-lg font-medium max-w-md line-clamp-1 md:line-clamp-2">{t(cat.locals.description)}</p>
                                       </div>
                                     </div>
                                     
@@ -5407,6 +5946,7 @@ export default function App() {
           </LocationProvider>
           </CartContext.Provider>
         </NotificationContext.Provider>
+        )}
       </AuthContext.Provider>
     </LanguageContext.Provider>
   );

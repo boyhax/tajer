@@ -94,11 +94,14 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
-  role: 'admin' | 'customer' | 'store' | 'driver';
+  role: 'admin' | 'customer' | 'store' | 'driver'; // Keep for legacy compatibility
+  roles: ('admin' | 'customer' | 'store' | 'driver')[];
   address?: string;
   defaultLocation?: { lat: number, lng: number };
   isVerified?: boolean;
+  isBanned?: boolean;
   language?: 'en' | 'ar';
+  createdAt?: any;
 }
 
 export interface Store {
@@ -107,7 +110,10 @@ export interface Store {
   name: string;
   description: string;
   location: string;
+  logoUrl?: string;
+  bannerUrl?: string;
   isVerified: boolean;
+  isDefault?: boolean;
   adminMessage?: string;
   locals: {
     name: LocalizedString;

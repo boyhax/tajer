@@ -17,16 +17,26 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
-         (request.auth.token.email == "facegoogl@gmail.com" && request.auth.token.email_verified == true));
+        (
+          (request.auth.token.get('email', '') == "facegoogl@gmail.com" && request.auth.token.get('email_verified', false) == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', []).hasAny(['admin'])))
+        );
     }
 
     function isStore() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'store';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'store' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', []).hasAny(['store']) ||
+         isAdmin());
     }
 
     function isDriver() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'driver';
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'driver' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', []).hasAny(['driver']) ||
+         isAdmin());
     }
 
     function isValidProduct(data) {
@@ -56,8 +66,8 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.uid == request.auth.uid &&
-             data.email is string &&
-             data.role in ['admin', 'customer', 'store', 'driver'];
+             (data.email is string || data.email == null) &&
+             (data.roles is list);
     }
 
     function isValidWishlistItem(data) {
@@ -90,8 +100,8 @@ service cloud.firestore {
     // Users: Users can read/write their own, admin can read all
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                              (request.resource.data.role == 'customer' || request.resource.data.role == 'store' || request.resource.data.role == 'driver' || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAdmin() || (isOwner(userId) && isValidUser(request.resource.data));
     }
 
     // Stores: Publicly readable, owner or admin can write
