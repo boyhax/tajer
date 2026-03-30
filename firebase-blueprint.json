@@ -82,8 +82,10 @@
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "customer", "store", "driver"] },
+        "roles": { "type": "array", "items": { "type": "string" } },
         "address": { "type": "string" },
-        "isVerified": { "type": "boolean" }
+        "isVerified": { "type": "boolean" },
+        "photoURL": { "type": "string" }
       },
       "required": ["uid", "email", "role"]
     },
@@ -97,7 +99,10 @@
         "name": { "type": "string" },
         "description": { "type": "string" },
         "location": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "bannerUrl": { "type": "string" },
         "isVerified": { "type": "boolean" },
+        "isDefault": { "type": "boolean" },
         "locals": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time" }
       },

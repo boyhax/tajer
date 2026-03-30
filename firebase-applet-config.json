@@ -1,10 +1,10 @@
 {
-  "projectId": "weyyak-bf50a",
-  "appId": "1:859432831118:web:4dcd9b4b739f1adb17a1df",
-  "apiKey": "AIzaSyAfMByNzRSmBdZtKv1OITRZkn3kHbtXgtM",
-  "authDomain": "weyyak-bf50a.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-29973ea1-c386-4523-a9d2-0a8c2edd42e5",
-  "storageBucket": "weyyak-bf50a.firebasestorage.app",
-  "messagingSenderId": "859432831118",
+  "projectId": "kuzama-60de7",
+  "appId": "1:382139014612:web:5e693b0124c93120cf4a41",
+  "apiKey": "AIzaSyCq-rBMDnd97b9Cwi7Au5VlrGH8yKRqkL0",
+  "authDomain": "kuzama-60de7.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "kuzama-60de7.firebasestorage.app",
+  "messagingSenderId": "382139014612",
   "measurementId": ""
 }

@@ -1484,8 +1484,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         paymentMethod,
         createdAt: serverTimestamp(),
         customerInfo: {
-          name: user.displayName,
-          email: user.email,
+          name: user?.displayName || '',
+          email: user?.email || '',
           address: address,
           destinationCoords: coords || undefined
         }
@@ -1505,8 +1505,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         body: JSON.stringify({
           amount: total,
           currency: config.currency.code,
-          customerName: user.displayName,
-          customerEmail: user.email,
+          customerName: user?.displayName || '',
+          customerEmail: user?.email || '',
           orderId: orderRef.id
         })
       });
@@ -1654,28 +1654,21 @@ const PhoneLogin = () => {
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError('');
     try {
-      const container = document.getElementById('recaptcha-container');
-      if (container) {
-        container.innerHTML = '';
-      }
-      
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch (e) {}
-        recaptchaVerifierRef.current = null;
-      }
-
-      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        badge: 'inline',
-        callback: () => {
-          console.log('Recaptcha verified');
+      if (!recaptchaVerifierRef.current) {
+        const container = document.getElementById('recaptcha-container');
+        if (container) {
+          container.innerHTML = '';
         }
-      });
+        
+        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+          badge: 'inline'
+        });
+      }
 
       await signInWithPhone(phoneNumber, recaptchaVerifierRef.current);
       setStep('code');
@@ -1857,7 +1850,13 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
   const { t, lang, setLang } = useContext(LanguageContext);
   const [activeTab, setActiveTab] = useState<'info' | 'store' | 'driver' | 'admin'>('info');
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ displayName: profile.displayName, photoURL: user.photoURL });
+  const [editData, setEditData] = useState({ displayName: profile?.displayName || '', photoURL: user?.photoURL || '' });
+
+  useEffect(() => {
+    if (profile) {
+      setEditData({ displayName: profile?.displayName || '', photoURL: user?.photoURL || '' });
+    }
+  }, [profile, user]);
 
   const handleUpdateProfile = async () => {
     try {
@@ -1891,7 +1890,7 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
             </button>
           </div>
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold">{user.displayName}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">{user?.displayName || t({ en: 'User', ar: 'مستخدم' })}</h1>
             <p className="text-sm md:text-base text-gray-500">{user.email}</p>
             <div className="flex gap-2 mt-2 justify-center md:justify-start">
               <span className="px-2 py-0.5 md:px-3 md:py-1 bg-black text-white text-[8px] md:text-[10px] font-bold uppercase rounded-full">
@@ -2019,7 +2018,7 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">{t({ en: 'Display Name', ar: 'الاسم المعروض' })}</label>
-                    <p className="font-medium">{user.displayName}</p>
+                    <p className="font-medium">{user?.displayName || 'User'}</p>
                   </div>
                   <div>
                     <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">{t({ en: 'Email Address', ar: 'البريد الإلكتروني' })}</label>
@@ -4807,7 +4806,7 @@ const AdminPanel = () => {
             </div>
             <div className="space-y-4">
               <p className="text-sm text-gray-500">
-                {t({ en: 'To:', ar: 'إلى:' })} <span className="font-bold text-black">{selectedUser.displayName}</span>
+                {t({ en: 'To:', ar: 'إلى:' })} <span className="font-bold text-black">{selectedUser?.displayName || ''}</span>
               </p>
               <textarea 
                 value={adminMessage}
