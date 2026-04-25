@@ -92,6 +92,17 @@ import {
   Map as MapIcon,
   ArrowUpDown,
 } from 'lucide-react';
+import { 
+  BrowserRouter as Router, 
+  Routes, 
+  Route, 
+  useNavigate, 
+  useParams, 
+  useSearchParams,
+  useLocation,
+  Link,
+  Navigate
+} from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
 import L from 'leaflet';
@@ -110,8 +121,10 @@ import {
   DrawerContent, 
   DrawerHeader, 
   DrawerTitle, 
+  DrawerTitleHidden,
   DrawerTrigger,
-  DrawerClose
+  DrawerClose,
+  VisuallyHidden
 } from "./components/ui/Drawer";
 
 // Fix Leaflet marker icon issue
@@ -1037,7 +1050,7 @@ const ProductCard = ({
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
 
         {/* Top Actions */}
-        <div className="absolute top-2 right-2 md:top-3 md:right-3 z-10">
+        <div className="absolute top-2 right-2 md:top-3 md:right-3 z-20 flex flex-col gap-2">
           {user && (
             <button 
               onClick={(e) => {
@@ -1068,33 +1081,27 @@ const ProductCard = ({
               <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
 
-            <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest">
-              {product.rating && (
-                <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
-                  <Star className="w-2.5 h-2.5 md:w-3 md:h-3 text-amber-400 fill-current" />
-                  <span>{product.rating}</span>
-                </div>
-              )}
-              {product.deliveryTime && (
-                <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
-                  <Clock className="w-2.5 h-2.5 md:w-3 md:h-3" />
-                  <span>{product.deliveryTime}m</span>
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest">
+                {product.rating && (
+                  <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
+                    <Star className="w-2.5 h-2.5 md:w-3 md:h-3 text-amber-400 fill-current" />
+                    <span>{product.rating}</span>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addToCart(product);
+                }}
+                className="w-8 h-8 md:w-10 md:h-10 bg-emerald-500 text-white rounded-lg md:rounded-xl flex items-center justify-center shadow-2xl hover:bg-emerald-600 hover:scale-110 active:scale-95 transition-all"
+              >
+                <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
-
-        {/* Quick Add Button */}
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            addToCart(product);
-          }}
-          className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-8 h-8 md:w-10 md:h-10 bg-emerald-500 text-white rounded-lg md:rounded-xl flex items-center justify-center shadow-2xl hover:bg-emerald-600 hover:scale-110 active:scale-95 transition-all z-20 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
-        >
-          <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
-        </button>
       </motion.div>
     );
   }
@@ -1117,23 +1124,24 @@ const ProductCard = ({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
         
-        <div className="absolute bottom-0 left-0 right-0 p-1.5 md:p-2 text-white">
-          <h4 className="text-[9px] md:text-[10px] font-black truncate tracking-tight">{t(product.locals.name)}</h4>
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] md:text-[13px] font-black">{product.price}</span>
-            <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+        <div className="absolute bottom-0 left-0 right-0 p-1.5 md:p-2 text-white flex items-end justify-between">
+          <div className="flex-1 min-w-0 pr-8">
+            <h4 className="text-[9px] md:text-[10px] font-black truncate tracking-tight">{t(product.locals.name)}</h4>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] md:text-[13px] font-black">{product.price}</span>
+              <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+            </div>
           </div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(product);
+            }}
+            className="w-7 h-7 md:w-8 md:h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+          >
+            <ShoppingCart className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          </button>
         </div>
-
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            addToCart(product);
-          }}
-          className="absolute top-1.5 right-1.5 md:top-2 md:right-2 w-6 h-6 md:w-7 md:h-7 bg-white/20 backdrop-blur-md text-white rounded-lg flex items-center justify-center shadow-lg hover:bg-emerald-500 transition-colors z-10"
-        >
-          <ShoppingCart className="w-3 h-3 md:w-4 md:h-4" />
-        </button>
       </motion.div>
     );
   }
@@ -1156,10 +1164,13 @@ const ProductCard = ({
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
       
-      <div className="absolute top-2 right-2 md:top-3 md:right-3 flex flex-col gap-1 md:gap-2 z-10">
+      <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1 md:gap-2 z-10">
         <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-[14px] font-black text-white shadow-xl tracking-widest">
           {product.price} {t(appSettings.currency?.symbol || config.currency.symbol)}
         </div>
+      </div>
+
+      <div className="absolute top-2 right-2 md:top-3 md:right-3 z-10">
         {user && (
           <button 
             onClick={(e) => {
@@ -1188,9 +1199,9 @@ const ProductCard = ({
           e.stopPropagation();
           addToCart(product);
         }}
-        className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-8 h-8 md:w-10 md:h-10 bg-white text-black rounded-full flex items-center justify-center shadow-xl hover:bg-emerald-500 hover:text-white transition-all z-20 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+        className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-10 h-10 md:w-12 md:h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all z-20"
       >
-        <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
+        <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
       </button>
     </motion.div>
   );
@@ -1198,7 +1209,7 @@ const ProductCard = ({
 
 const ProductGrid = ({ products, onSelect }: { products: Product[], onSelect: (p: Product) => void }) => {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 md:gap-8 p-1 md:p-8">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-1.5 md:gap-8 p-1 md:p-8">
       {products.map((product) => (
         <ProductCard key={product.id} product={product} onSelect={onSelect} />
       ))}
@@ -2353,7 +2364,13 @@ const ProfilePage = ({
 }) => {
   const { user, profile, logout } = useContext(AuthContext);
   const { t, lang, setLang } = useContext(LanguageContext);
-  const [activeTab, setActiveTab] = useState<'info' | 'store' | 'driver' | 'admin'>('info');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as any) || 'info';
+  const setActiveTab = (tab: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams);
+  };
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ displayName: profile?.displayName || '', photoURL: user?.photoURL || '' });
 
@@ -4212,7 +4229,13 @@ const AdminPanel = ({
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings' | 'regions' | 'delivery-methods' | 'pages'>('products');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeSubTab = (searchParams.get('tab') as any) || 'products';
+  const setActiveSubTab = (tab: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams);
+  };
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [adminMessage, setAdminMessage] = useState('');
@@ -6803,13 +6826,14 @@ const CategoryProducts = ({ categoryId, onSelectProduct }: { categoryId: string,
   if (products.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mt-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-4 mt-4">
       {products.map(p => (
-        <ProductCard key={p.id} product={p} onSelect={onSelectProduct} variant="minimal" />
+        <ProductCard key={p.id} product={p} onSelect={onSelectProduct} />
       ))}
     </div>
   );
 };
+
 const FilterDrawer = ({ 
   onClose,
   categories,
@@ -6835,135 +6859,156 @@ const FilterDrawer = ({
   const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'tags'>('sort');
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-      />
-      <motion.div 
-        initial={{ x: lang === 'ar' ? -400 : 400 }}
-        animate={{ x: 0 }}
-        exit={{ x: lang === 'ar' ? -400 : 400 }}
-        className="relative w-full max-w-sm bg-white h-full shadow-2xl flex flex-col"
-      >
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{t({ en: 'Filters', ar: 'الفلاتر' })}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex border-b border-gray-100">
+    <Drawer open={true} onOpenChange={(open) => !open && onClose()}>
+      <DrawerContent className="max-h-[85vh]">
+        <DrawerHeader className="border-b border-gray-100 pb-4">
+          <DrawerTitle>{t({ en: 'Refine Selection', ar: 'تحسين الاختيار' })}</DrawerTitle>
+          <DrawerTitleHidden>{t({ en: 'Filter and Sort Products', ar: 'تصفية وترتيب المنتجات' })}</DrawerTitleHidden>
+        </DrawerHeader>
+        
+        <div className="flex border-b border-gray-100 sticky top-0 bg-white z-10">
           <button 
             onClick={() => setActiveTab('sort')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'sort' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'sort' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Sort', ar: 'ترتيب' })}
           </button>
           <button 
             onClick={() => setActiveTab('categories')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'categories' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'categories' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Categories', ar: 'الفئات' })}
           </button>
           <button 
             onClick={() => setActiveTab('tags')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'tags' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'tags' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Tags', ar: 'الوسوم' })}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-20">
           {activeTab === 'sort' && (
             <div className="space-y-3">
               {[
-                { id: 'newest', label: { en: 'Newest', ar: 'الأحدث' } },
+                { id: 'newest', label: { en: 'Newest Arrivals', ar: 'وصل حديثاً' } },
                 { id: 'price-low', label: { en: 'Price: Low to High', ar: 'السعر: من الأقل للأعلى' } },
                 { id: 'price-high', label: { en: 'Price: High to Low', ar: 'السعر: من الأعلى للأقل' } },
               ].map(opt => (
                 <button 
                   key={opt.id}
                   onClick={() => setSortOption(opt.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${sortOption === opt.id ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${sortOption === opt.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
                 >
-                  <span className="font-bold text-sm">{t(opt.label)}</span>
-                  {sortOption === opt.id && <CheckCircle2 className="w-4 h-4" />}
+                  <span className="font-bold text-sm tracking-tight">{t(opt.label)}</span>
+                  {sortOption === opt.id && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                 </button>
               ))}
             </div>
           )}
           {activeTab === 'categories' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <button 
                 onClick={() => setSelectedCategoryId('')}
-                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryId === '' ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryId === '' ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
               >
-                <span className="font-bold text-sm">{t({ en: 'All Categories', ar: 'جميع الفئات' })}</span>
-                {selectedCategoryId === '' && <CheckCircle2 className="w-4 h-4" />}
+                <span className="font-bold text-sm tracking-tight">{t({ en: 'All Items', ar: 'جميع المنتجات' })}</span>
+                {selectedCategoryId === '' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
               </button>
               {categories.map(c => (
                 <button 
                   key={c.id}
                   onClick={() => setSelectedCategoryId(c.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryId === c.id ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryId === c.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
                 >
-                  <span className="font-bold text-sm">{t(c.locals.title)}</span>
-                  {selectedCategoryId === c.id && <CheckCircle2 className="w-4 h-4" />}
+                   <span className="font-bold text-sm tracking-tight">{t(c.locals?.title)}</span>
+                  {selectedCategoryId === c.id && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                 </button>
               ))}
             </div>
           )}
           {activeTab === 'tags' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <button 
                 onClick={() => setSelectedTagId('')}
-                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedTagId === '' ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedTagId === '' ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
               >
-                <span className="font-bold">{t({ en: 'All Tags', ar: 'جميع الوسوم' })}</span>
-                {selectedTagId === '' && <CheckCircle2 className="w-5 h-5" />}
+                <span className="font-bold text-sm tracking-tight">{t({ en: 'All Tags', ar: 'جميع الوسوم' })}</span>
+                {selectedTagId === '' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
               </button>
               {tags.map(tag => (
                 <button 
                   key={tag.id}
                   onClick={() => setSelectedTagId(tag.id)}
-                  className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center justify-between ${selectedTagId === tag.id ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedTagId === tag.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <TagIcon className="w-4 h-4" />
-                    <span className="font-bold">{t(tag.title)}</span>
-                  </div>
-                  {selectedTagId === tag.id && <CheckCircle2 className="w-5 h-5" />}
+                  <span className="font-bold text-sm tracking-tight">{t(tag.title)}</span>
+                  {selectedTagId === tag.id && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-100">
-          <button 
-            onClick={onClose}
-            className="w-full bg-black text-white py-4 rounded-2xl font-bold hover:bg-gray-800 transition-all"
-          >
-            {t({ en: 'Apply Filters', ar: 'تطبيق الفلاتر' })}
-          </button>
+        <div className="p-6 border-t border-gray-100 bg-white sticky bottom-0">
+          <DrawerClose asChild>
+            <button className="w-full py-5 bg-black text-white rounded-[2rem] font-black uppercase tracking-[0.2em] shadow-2xl hover:scale-[1.02] active:scale-95 transition-all">
+              {t({ en: 'Apply Filters', ar: 'تطبيق' })}
+            </button>
+          </DrawerClose>
         </div>
-      </motion.div>
-    </div>
+      </DrawerContent>
+    </Drawer>
   );
 };
 
 // --- Main App ---
 
-export default function App() {
+const PuckDynamicPage = ({ onNavigate }: { onNavigate: (p: string) => void }) => {
+  const { pageId } = useParams();
+  return (
+    <div className="max-w-7xl mx-auto px-6">
+      <PuckPage pageId={pageId || 'home'} onNavigate={onNavigate} />
+    </div>
+  );
+};
+
+function MainApp() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [currentPage, setCurrentPage] = useState('home');
+
+  // Use URL for state
+  const currentPage = useMemo(() => {
+    const path = location.pathname;
+    if (path === '/') return 'home';
+    if (path === '/shop') return 'shop';
+    if (path === '/cart') return 'cart';
+    if (path === '/checkout') return 'checkout';
+    if (path === '/orders') return 'orders';
+    if (path === '/wishlist') return 'wishlist';
+    if (path === '/profile') return 'profile';
+    if (path === '/admin') return 'admin';
+    if (path === '/admin-page-editor') return 'admin-page-editor';
+    if (path === '/contact') return 'contact';
+    if (path === '/policy') return 'policy';
+    if (path.startsWith('/p/')) return 'p/' + path.split('/')[2];
+    return 'page';
+  }, [location.pathname]);
+
+  const { pageId: dynamicPageId } = useParams();
+  const effectivePageId = dynamicPageId || (currentPage.startsWith('p/') ? currentPage.split('/')[1] : null);
+
+  const setCurrentPage = (page: string) => {
+    if (page === 'home') navigate('/');
+    else if (page.startsWith('p/')) navigate('/p/' + (page.split('/')[1] || page.split('/')[2] || page.split('/')[0]));
+    else navigate('/' + page);
+  };
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [viewingPageId, setViewingPageId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -6976,7 +7021,6 @@ export default function App() {
     return (saved === 'en' || saved === 'ar') ? saved : 'en';
   });
   const [tags, setTags] = useState<Tag[]>([]);
-  const [selectedTagId, setSelectedTagId] = useState('');
   const [appSettings, setAppSettings] = useState<AppSettings>({ 
     paymentMethods: { online: true, cod: true }, 
     restrictDeliveryToRegions: false,
@@ -7000,14 +7044,51 @@ export default function App() {
       }
     }
   };
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('');
+  // Shop Filters via URL
+  const searchQuery = searchParams.get('q') || '';
+  const setSearchQuery = (q: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (q) newParams.set('q', q);
+    else newParams.delete('q');
+    setSearchParams(newParams);
+  };
+
+  const selectedCategoryId = searchParams.get('category') || '';
+  const setSelectedCategoryId = (c: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (c) newParams.set('category', c);
+    else newParams.delete('category');
+    setSearchParams(newParams);
+  };
+
+  const selectedBrand = searchParams.get('brand') || '';
+  const setSelectedBrand = (b: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (b) newParams.set('brand', b);
+    else newParams.delete('brand');
+    setSearchParams(newParams);
+  };
+
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [sortOption, setSortOption] = useState('newest');
+
+  const sortOption = searchParams.get('sort') || 'newest';
+  const setSortOption = (s: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sort', s);
+    setSearchParams(newParams);
+  };
+
+  const selectedTagId = searchParams.get('tag') || '';
+  const setSelectedTagId = (t_id: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (t_id) newParams.set('tag', t_id);
+    else newParams.delete('tag');
+    setSearchParams(newParams);
+  };
+
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
   const updateAppSettings = async (settings: Partial<AppSettings>) => {
@@ -7268,11 +7349,10 @@ export default function App() {
 
   // Handle Payment Success Redirect
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const paymentId = params.get('paymentId');
-    const orderId = params.get('orderId');
+    const paymentId = searchParams.get('paymentId');
+    const orderId = searchParams.get('orderId');
     
-    if (paymentId && orderId) {
+    if (paymentId && orderId && user) {
       // Verify payment on backend
       const verify = async () => {
         try {
@@ -7297,6 +7377,11 @@ export default function App() {
 
             clearCart();
             setCurrentPage('orders');
+            // Clean up URL params
+            const newParams = new URLSearchParams(searchParams);
+            newParams.delete('paymentId');
+            newParams.delete('orderId');
+            setSearchParams(newParams);
             alert('Payment Successful!');
           }
         } catch (error) {
@@ -7305,7 +7390,7 @@ export default function App() {
       };
       verify();
     }
-  }, []);
+  }, [searchParams, user]);
 
   if (loading) {
     return (
@@ -7376,279 +7461,146 @@ export default function App() {
                 />
               )}
               
-              <main className={`${currentPage !== 'admin-page-editor' ? 'pb-20' : ''}`}>
+              <main className={`${location.pathname !== '/admin-page-editor' ? 'pb-20' : ''}`}>
                 <AnimatePresence mode="wait">
-                  {selectedProduct ? (
-                    <motion.div 
-                      key="detail"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-                      onClick={() => setSelectedProduct(null)}
-                    >
-                      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl overflow-hidden max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-                        <ProductDetail product={selectedProduct} onBack={() => setSelectedProduct(null)} />
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key={currentPage}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                    >
-                      {currentPage === 'home' && (
-                        <div className="px-1 md:px-0">
-                          <PuckPage pageId="home" onNavigate={setCurrentPage} />
-
-                          {/* Featured Arrivals Section to bridge to Shop */}
-                          <div className="max-w-7xl mx-auto px-6 py-20">
-                             <div className="flex justify-between items-end mb-12">
-                                <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">{t({ en: 'Explore Shop', ar: 'استكشف المتجر' })}</h1>
-                                <button onClick={() => setCurrentPage('shop')} className="text-xs font-black text-gray-400 hover:text-black uppercase tracking-widest border-b-2 border-gray-100 pb-1">{t({ en: 'Visit Marketplace', ar: 'زيارة المتجر' })}</button>
-                             </div>
-                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-12">
-                                {products.slice(0, 4).map(product => (
-                                  <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
-                                ))}
-                             </div>
-                          </div>
+                  {selectedProduct && (
+                    <Drawer open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
+                      <DrawerContent className="max-h-[90vh]">
+                        <DrawerHeader className="sr-only">
+                          <DrawerTitle>{selectedProduct ? t(selectedProduct.locals?.title || { en: selectedProduct.name, ar: selectedProduct.name }) : 'Product Details'}</DrawerTitle>
+                        </DrawerHeader>
+                        <div className="flex-1 overflow-y-auto pt-4 pb-20">
+                          <ProductDetail product={selectedProduct} onBack={() => setSelectedProduct(null)} />
                         </div>
-                      )}
-
-                      {currentPage === 'shop' && (
-                        <div className="max-w-7xl mx-auto px-4 md:px-6">
-                          {/* Hero / Header Section */}
-                          <div className="py-12 md:py-20 text-center">
-                            <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter uppercase leading-none mb-6">
-                              {t({ en: 'THE MARKET', ar: 'السوق' })}
-                            </h1>
-                            <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-xs md:text-sm max-w-lg mx-auto">
-                              {t({ en: 'Discover curated quality from top stores across the region', ar: 'اكتشف الجودة برعاية من أفضل المتاجر في المنطقة' })}
-                            </p>
-                          </div>
-
-                          {/* Unified Sticky Header */}
-                          <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl -mx-4 px-4 md:mx-0 md:px-0 border-b border-gray-100 shadow-sm mb-12">
-                            <div className="max-w-4xl mx-auto py-3 space-y-4">
-                              {/* Search & Actions */}
-                              <div className="flex items-center gap-2">
-                                <div className="relative flex-1 group">
-                                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within:text-black transition-colors" />
-                                  <input 
-                                    type="text"
-                                    placeholder={t({ en: 'Search...', ar: 'بحث...' })}
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-full focus:bg-white focus:border-gray-100 focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-tight"
-                                  />
-                                </div>
-                                <div className="flex gap-1.5">
-                                  <Drawer>
-                                    <DrawerTrigger asChild>
-                                      <button 
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                        className="flex items-center justify-center w-9 h-9 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
-                                      >
-                                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                                      </button>
-                                    </DrawerTrigger>
-                                    <DrawerContent className="max-w-md w-full">
-                                      <DrawerHeader>
-                                        <DrawerTitle>{t({ en: 'Refine Selection', ar: 'تحسين الاختيار' })}</DrawerTitle>
-                                      </DrawerHeader>
-                                      <div className="p-8 space-y-10 overflow-y-auto max-h-[70vh]">
-                                        <div>
-                                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">{t({ en: 'By Category', ar: 'حسب الفئة' })}</h4>
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <button 
-                                              onClick={() => setSelectedCategoryId('')}
-                                              className={`py-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase ${!selectedCategoryId ? 'border-black bg-black text-white' : 'border-gray-50 flex items-center justify-center gap-2 hover:border-gray-200 px-4'}`}
-                                            >
-                                              {t({ en: 'All Items', ar: 'الكل' })}
-                                            </button>
-                                            {categories.map(cat => (
-                                              <button 
-                                                key={cat.id}
-                                                onClick={() => setSelectedCategoryId(cat.id)}
-                                                className={`py-4 px-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase truncate text-center ${selectedCategoryId === cat.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
-                                              >
-                                                {t(cat.name)}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-
-                                        <div>
-                                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">{t({ en: 'By Brand', ar: 'حسب الماركة' })}</h4>
-                                          <div className="flex flex-wrap gap-2">
-                                            {brands.map(brand => (
-                                              <button 
-                                                key={brand}
-                                                onClick={() => setSelectedBrand(selectedBrand === brand ? '' : brand)}
-                                                className={`px-6 py-3 rounded-full border-2 transition-all font-bold text-[10px] uppercase ${selectedBrand === brand ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
-                                              >
-                                                {brand}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </div>
-
-                                        <DrawerClose asChild>
-                                          <button className="w-full py-6 bg-emerald-500 text-white rounded-[2.5rem] font-black uppercase tracking-widest shadow-2xl shadow-emerald-500/30 hover:scale-[1.02] transition-all">
-                                            {t({ en: 'Show Results', ar: 'عرض النتائج' })}
-                                          </button>
-                                        </DrawerClose>
-                                      </div>
-                                    </DrawerContent>
-                                  </Drawer>
-
-                                  <button 
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="flex items-center justify-center w-9 h-9 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0"
-                                  >
-                                    <ArrowUpDown className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Categories Carousel */}
-                              {categories && categories.length > 0 && (
-                                <Carousel 
-                                  opts={{ align: "start", loop: false, dragFree: true }}
-                                  className="w-full"
-                                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                                  key={`cat-carousel-${categories.length}`}
-                                >
-                                  <CarouselContent className="-ms-2">
-                                    <CarouselItem className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                      <button 
-                                        onClick={() => setSelectedCategoryId('')}
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                        className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${!selectedCategoryId ? 'ring-2 ring-emerald-500' : ''}`}
-                                      >
-                                        <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${!selectedCategoryId ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                                           <ShoppingBag className="w-4 h-4" />
-                                        </div>
-                                      </button>
-                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${!selectedCategoryId ? 'text-black' : 'text-gray-400'}`}>
-                                        {t({ en: 'All', ar: 'الكل' })}
-                                      </p>
-                                    </CarouselItem>
-                                    {categories.map(cat => (
-                                      <CarouselItem key={cat.id} className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                        <button 
-                                          onClick={() => setSelectedCategoryId(cat.id)}
-                                          onPointerDown={(e) => e.stopPropagation()}
-                                          className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryId === cat.id ? 'ring-2 ring-emerald-500' : ''}`}
-                                        >
-                                          {cat.bannerImageUrl && <img src={cat.bannerImageUrl} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.name)} />}
-                                          <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryId === cat.id ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}>
-                                          </div>
-                                        </button>
-                                        <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryId === cat.id ? 'text-black' : 'text-gray-400'}`}>
-                                          {t(cat.name)}
-                                        </p>
-                                      </CarouselItem>
-                                    ))}
-                                  </CarouselContent>
-                                </Carousel>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Stats & Active Filters */}
-                          <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12 border-t border-gray-100 pt-8">
-                             <div className="flex items-center gap-4">
-                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">
-                                  {t({ en: 'Currently Viewing', ar: 'تشاهد الآن' })}:
-                                </span>
-                                <div className="flex flex-wrap gap-2">
-                                   <span className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-emerald-100">
-                                     {filteredProducts.length} {t({ en: 'Products', ar: 'منتجات' })}
-                                   </span>
-                                   {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
-                                     <button 
-                                       onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }}
-                                       className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"
-                                     >
-                                       <X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}
-                                     </button>
-                                   )}
-                                </div>
-                             </div>
-                             
-                             <div className="flex items-center gap-4 text-[10px] font-black text-gray-300 uppercase tracking-widest">
-                                <span>{t({ en: 'Secure Checkout', ar: 'دفع آمن' })}</span>
-                                <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                                <span>{t({ en: 'Express Delivery', ar: 'توصيل سريع' })}</span>
-                             </div>
-                          </div>
-
-                          {/* Product Grid Area */}
-                          <div className="relative">
-                            {filteredProducts.length > 0 ? (
-                              <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-x-12 md:gap-y-20">
-                                {filteredProducts.map(product => (
-                                  <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
-                                ))}
-                              </div>
-                            ) : (
-                              <motion.div 
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="py-40 text-center bg-gray-50 rounded-[4rem] border-4 border-dashed border-gray-100"
-                              >
-                                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
-                                  <Search className="w-10 h-10 text-gray-200" />
-                                </div>
-                                <h3 className="text-3xl font-black italic uppercase tracking-tighter mb-4">{t({ en: 'Nothing Found', ar: 'لم يتم العثور على شيء' })}</h3>
-                                <p className="text-gray-400 font-medium max-w-sm mx-auto mb-10">{t({ en: 'Try adjusting your filters or search terms to find what you are looking for.', ar: 'حاول تعديل الفلاتر أو كلمات البحث للعثور على ما تبحث عنه.' })}</p>
-                                <button 
-                                  onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }}
-                                  className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all"
-                                >
-                                  {t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}
-                                </button>
-                              </motion.div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {currentPage === 'cart' && <CartPage onCheckout={() => setCurrentPage('checkout')} />}
-                      {currentPage === 'checkout' && <CheckoutPage onComplete={() => setCurrentPage('orders')} />}
-                      {currentPage === 'orders' && <OrdersPage />}
-                      {currentPage === 'wishlist' && <WishlistPage onSelectProduct={setSelectedProduct} />}
-                      {currentPage === 'profile' && (
-                        <ProfilePage 
-                          onNavigate={setCurrentPage} 
-                          setEditingPageId={setEditingPageId}
-                          allPages={allPages}
-                        />
-                      )}
-                      {currentPage === 'contact' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="contact" onNavigate={setCurrentPage} /></div>}
-                      {currentPage === 'policy' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="policy" onNavigate={setCurrentPage} /></div>}
-                      {currentPage.startsWith('p/') && (
-                        <div className="max-w-7xl mx-auto px-6">
-                          <PuckPage pageId={currentPage.split('/')[1]} onNavigate={setCurrentPage} />
-                        </div>
-                      )}
-                    </motion.div>
+                      </DrawerContent>
+                    </Drawer>
                   )}
                 </AnimatePresence>
 
-                {currentPage === 'admin' && (
-                  <AdminPanel 
-                    setCurrentPage={setCurrentPage} 
-                    setEditingPageId={setEditingPageId} 
-                    allPages={allPages} 
-                  />
-                )}
+                <Routes>
+                  <Route path="/" element={
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+                      <div className="px-1 md:px-0">
+                        <PuckPage pageId="home" onNavigate={setCurrentPage} />
+                        <div className="max-w-7xl mx-auto px-6 py-20">
+                           <div className="flex justify-between items-end mb-12">
+                              <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">{t({ en: 'Explore Shop', ar: 'استكشف المتجر' })}</h1>
+                              <button onClick={() => navigate('/shop')} className="text-xs font-black text-gray-400 hover:text-black uppercase tracking-widest border-b-2 border-gray-100 pb-1">{t({ en: 'Visit Marketplace', ar: 'زيارة المتجر' })}</button>
+                           </div>
+                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-12">
+                              {products.slice(0, 4).map(product => (
+                                <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
+                              ))}
+                           </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  } />
 
-                {currentPage === 'admin-page-editor' && editingPageId && (
-                  <PageEditor pageId={editingPageId} onClose={() => setCurrentPage('admin')} />
-                )}
+                  <Route path="/shop" element={
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+                      <div className="max-w-7xl mx-auto px-4 md:px-6">
+                        <div className="py-12 md:py-20 text-center">
+                          <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter uppercase leading-none mb-6">
+                            {t({ en: 'THE MARKET', ar: 'السوق' })}
+                          </h1>
+                          <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-xs md:text-sm max-w-lg mx-auto">
+                            {t({ en: 'Discover curated quality from top stores across the region', ar: 'اكتشف الجودة برعاية من أفضل المتاجر في المنطقة' })}
+                          </p>
+                        </div>
+                        {/* ... (rest of search/filter/grid logic) ... */}
+                        {/* I will keep the actual JSX here but it's long. I'll use a placeholder and then fill it if needed, or just do the full replacement if it fits. */}
+                        {/* Re-including the shop logic for completeness */}
+                        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl -mx-4 px-4 md:mx-0 md:px-0 border-b border-gray-100 shadow-sm mb-12">
+                          <div className="max-w-4xl mx-auto py-3 space-y-4">
+                            <div className="flex items-center gap-2">
+                              <div className="relative flex-1 group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within:text-black transition-colors" />
+                                <input 
+                                  type="text"
+                                  placeholder={t({ en: 'Search...', ar: 'بحث...' })}
+                                  value={searchQuery}
+                                  onChange={(e) => setSearchQuery(e.target.value)}
+                                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-full focus:bg-white focus:border-gray-100 focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-tight"
+                                />
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button 
+                                  onClick={() => setShowFilterDrawer(true)}
+                                  className="flex items-center justify-center w-9 h-9 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                                <button className="flex items-center justify-center w-9 h-9 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0">
+                                  <ArrowUpDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            {/* Categories Carousel */}
+                            {categories && categories.length > 0 && (
+                              <Carousel opts={{ align: "start", loop: false, dragFree: true }} className="w-full" dir={lang === 'ar' ? 'rtl' : 'ltr'} key={`cat-carousel-${categories.length}`}>
+                                <CarouselContent className="-ms-2">
+                                  <CarouselItem className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
+                                    <button onClick={() => setSelectedCategoryId('')} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${!selectedCategoryId ? 'ring-2 ring-emerald-500' : ''}`}>
+                                      <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${!selectedCategoryId ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                                         <ShoppingBag className="w-4 h-4" />
+                                      </div>
+                                    </button>
+                                    <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${!selectedCategoryId ? 'text-black' : 'text-gray-400'}`}>{t({ en: 'All', ar: 'الكل' })}</p>
+                                  </CarouselItem>
+                                  {categories.map(cat => (
+                                    <CarouselItem key={cat.id} className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
+                                      <button onClick={() => setSelectedCategoryId(cat.id)} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryId === cat.id ? 'ring-2 ring-emerald-500' : ''}`}>
+                                        {cat.bannerImageUrl && <img src={cat.bannerImageUrl} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.name)} />}
+                                        <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryId === cat.id ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}></div>
+                                      </button>
+                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryId === cat.id ? 'text-black' : 'text-gray-400'}`}>{t(cat.name)}</p>
+                                    </CarouselItem>
+                                  ))}
+                                </CarouselContent>
+                              </Carousel>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12 border-t border-gray-100 pt-8">
+                          <div className="flex items-center gap-4">
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">{t({ en: 'Currently Viewing', ar: 'تشاهد الآن' })}:</span>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-emerald-100">{filteredProducts.length} {t({ en: 'Products', ar: 'منتجات' })}</span>
+                              {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
+                                <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }} className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"><X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}</button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="relative">
+                          {filteredProducts.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 md:gap-x-12 md:gap-y-20">
+                              {filteredProducts.map(product => <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />)}
+                            </div>
+                          ) : (
+                            <div className="py-40 text-center bg-gray-50 rounded-[4rem] border-4 border-dashed border-gray-100">
+                              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl"><Search className="w-10 h-10 text-gray-200" /></div>
+                              <h3 className="text-3xl font-black italic uppercase tracking-tighter mb-4">{t({ en: 'Nothing Found', ar: 'لم يتم العثور على شيء' })}</h3>
+                              <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }} className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all">{t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  } />
+
+                  <Route path="/cart" element={<CartPage onCheckout={() => navigate('/checkout')} />} />
+                  <Route path="/checkout" element={<CheckoutPage onComplete={() => navigate('/orders')} />} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/wishlist" element={<WishlistPage onSelectProduct={setSelectedProduct} />} />
+                  <Route path="/profile" element={<ProfilePage onNavigate={setCurrentPage} setEditingPageId={setEditingPageId} allPages={allPages} />} />
+                  <Route path="/contact" element={<div className="max-w-4xl mx-auto px-6"><PuckPage pageId="contact" onNavigate={setCurrentPage} /></div>} />
+                  <Route path="/policy" element={<div className="max-w-4xl mx-auto px-6"><PuckPage pageId="policy" onNavigate={setCurrentPage} /></div>} />
+                  <Route path="/p/:pageId" element={<PuckDynamicPage onNavigate={setCurrentPage} />} />
+                  <Route path="/admin" element={profile?.roles?.includes('admin') ? <AdminPanel setCurrentPage={setCurrentPage} setEditingPageId={setEditingPageId} allPages={allPages} /> : <Navigate to="/" />} />
+                  <Route path="/admin-page-editor" element={profile?.roles?.includes('admin') && editingPageId ? <PageEditor pageId={editingPageId} onClose={() => navigate('/admin')} /> : <Navigate to="/admin" />} />
+                </Routes>
 
                 {/* Simple Footer */}
                 {!['admin', 'cart', 'checkout', 'admin-page-editor'].includes(currentPage) && (
@@ -7762,5 +7714,13 @@ export default function App() {
     </DataContext.Provider>
   </SettingsContext.Provider>
 </LanguageContext.Provider>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <MainApp />
+    </Router>
   );
 }
