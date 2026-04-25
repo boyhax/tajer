@@ -50,6 +50,7 @@ import {
   ArrowLeft,
   Search,
   Filter,
+  FileText,
   SlidersHorizontal,
   Globe,
   Home,
@@ -87,7 +88,6 @@ import {
   Building2,
   Info,
   Map as MapIcon,
-  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
@@ -2317,7 +2317,15 @@ const DefaultAddressSection = ({ profile, t }: { profile: UserProfile, t: (ls: a
   );
 };
 
-const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
+const ProfilePage = ({ 
+  onNavigate, 
+  setEditingPageId, 
+  allPages 
+}: { 
+  onNavigate: (page: string) => void,
+  setEditingPageId: (id: string | null) => void,
+  allPages: any[]
+}) => {
   const { user, profile, logout } = useContext(AuthContext);
   const { t, lang, setLang } = useContext(LanguageContext);
   const [activeTab, setActiveTab] = useState<'info' | 'store' | 'driver' | 'admin'>('info');
@@ -2550,7 +2558,13 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
           )
         )}
 
-        {activeTab === 'admin' && <AdminPanel />}
+        {activeTab === 'admin' && (
+          <AdminPanel 
+            setCurrentPage={onNavigate} 
+            setEditingPageId={setEditingPageId} 
+            allPages={allPages} 
+          />
+        )}
       </motion.div>
     </div>
   );
@@ -4027,23 +4041,16 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
   );
 };
 
-const PageEditor = () => {
+const PageEditor = ({ pageId, onClose }: { pageId: string, onClose: () => void }) => {
   const { t, lang: appLang } = useContext(LanguageContext);
-  const [selectedPageId, setSelectedPageId] = useState<string>('home');
   const [editLang, setEditLang] = useState<'en' | 'ar'>(appLang);
   const [fullData, setFullData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const pages = [
-    { id: 'home', label: { en: 'Home Page', ar: 'الصفحة الرئيسية' } },
-    { id: 'contact', label: { en: 'Contact Page', ar: 'صفحة اتصل بنا' } },
-    { id: 'policy', label: { en: 'Policy Page', ar: 'صفحة السياسات' } },
-  ];
-
   useEffect(() => {
     setLoading(true);
-    const unsub = onSnapshot(doc(db, 'pages', selectedPageId), (snap) => {
+    const unsub = onSnapshot(doc(db, 'pages', pageId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         setFullData(data.body || {});
@@ -4052,26 +4059,25 @@ const PageEditor = () => {
       }
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `pages/${selectedPageId}`);
+      handleFirestoreError(error, OperationType.GET, `pages/${pageId}`);
       setLoading(false);
     });
     return unsub;
-  }, [selectedPageId]);
+  }, [pageId]);
 
   const handleSave = async (data: any) => {
     setSaving(true);
     try {
-      await setDoc(doc(db, 'pages', selectedPageId), {
-        id: selectedPageId,
+      await setDoc(doc(db, 'pages', pageId), {
+        id: pageId,
         body: {
           ...fullData,
           [editLang]: data
         },
         updatedAt: serverTimestamp()
       }, { merge: true });
-      alert(t({ en: 'Page saved!', ar: 'تم حفظ الصفحة!' }));
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `pages/${selectedPageId}`);
+      handleFirestoreError(error, OperationType.WRITE, `pages/${pageId}`);
     } finally {
       setSaving(false);
     }
@@ -4084,55 +4090,67 @@ const PageEditor = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+      <div className="fixed inset-0 z-[200] bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+          <p className="font-bold text-gray-400 animate-pulse uppercase tracking-widest text-xs">Loading Editor...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-[80vh]">
-      <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white z-10 flex-wrap gap-4">
-        <div className="flex items-center gap-4">
-          <label className="text-xs font-black uppercase text-gray-400 tracking-widest">{t({ en: 'Editing Page', ar: 'تعديل صفحة' })}:</label>
-          <div className="flex bg-gray-100 p-1 rounded-2xl overflow-x-auto">
-            {pages.map(page => (
-              <button 
-                key={page.id}
-                onClick={() => setSelectedPageId(page.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
-                  selectedPageId === page.id ? 'bg-white shadow-sm text-black' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {t(page.label)}
-              </button>
-            ))}
+    <div className="fixed inset-0 z-[200] bg-white flex flex-col">
+      <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white z-50">
+        <div className="flex items-center gap-6">
+          <button 
+            onClick={onClose}
+            className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center hover:bg-black hover:text-white transition-all shadow-sm"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight uppercase italic">{t({ en: 'Design Page', ar: 'تصميم الصفحة' })}</h2>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Editing: <span className="text-black">{pageId}</span></p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <label className="text-xs font-black uppercase text-gray-400 tracking-widest">{t({ en: 'Language', ar: 'اللغة' })}:</label>
-          <div className="flex bg-emerald-50 p-1 rounded-2xl">
-            {(['en', 'ar'] as const).map(l => (
-              <button 
-                key={l}
-                onClick={() => setEditLang(l)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                  editLang === l ? 'bg-white shadow-sm text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'
-                }`}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-3">
+            <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">{t({ en: 'Language', ar: 'اللغة' })}:</label>
+            <div className="flex bg-gray-50 p-1 rounded-2xl border border-gray-100">
+              {(['en', 'ar'] as const).map(l => (
+                <button 
+                  key={l}
+                  onClick={() => setEditLang(l)}
+                  className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${
+                    editLang === l ? 'bg-white shadow-lg text-black' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {saving && (
+              <span className="text-xs font-bold text-emerald-500 animate-pulse flex items-center gap-2">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                {t({ en: 'Saving...', ar: 'جاري الحفظ...' })}
+              </span>
+            )}
+            <button 
+              onClick={onClose}
+              className="px-8 py-3 bg-black text-white rounded-2xl font-bold hover:scale-105 transition-all shadow-xl shadow-black/10 text-sm"
+            >
+              {t({ en: 'Finish & Exit', ar: 'إنهاء وخروج' })}
+            </button>
           </div>
         </div>
-        
-        {saving && (
-          <span className="text-xs font-bold text-emerald-500 animate-pulse">{t({ en: 'Saving...', ar: 'جاري الحفظ...' })}</span>
-        )}
       </div>
 
-      <div className="flex-1 overflow-hidden puck-editor-container" key={`${selectedPageId}-${editLang}`}>
+      <div className="flex-1 overflow-hidden puck-editor-container" key={`${pageId}-${editLang}`}>
         <Puck
           config={puckConfig}
           data={currentContent}
@@ -4144,13 +4162,20 @@ const PageEditor = () => {
         .puck-editor-container .Puck {
           height: 100% !important;
         }
-        /* Fix puck branding / layout for our theme if needed */
       `}</style>
     </div>
   );
 };
 
-const AdminPanel = () => {
+const AdminPanel = ({ 
+  setCurrentPage, 
+  setEditingPageId, 
+  allPages 
+}: { 
+  setCurrentPage: (p: string) => void, 
+  setEditingPageId: (p: string | null) => void, 
+  allPages: any[] 
+}) => {
   const { t } = useContext(LanguageContext);
   const { profile, user } = useContext(AuthContext);
   const { appSettings, updateAppSettings } = useContext(SettingsContext);
@@ -5970,7 +5995,83 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {activeSubTab === 'pages' && <PageEditor />}
+      {activeSubTab === 'pages' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">{t({ en: 'Page Management', ar: 'إدارة الصفحات' })}</h2>
+            <button 
+              onClick={() => {
+                const slug = prompt(t({ en: 'Enter page slug (e.g. about-us):', ar: 'أدخل معرف الصفحة (مثلاً about-us):' }));
+                if (slug) {
+                  setEditingPageId(slug);
+                  setCurrentPage('admin-page-editor');
+                }
+              }}
+              className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {t({ en: 'Add Dynamic Page', ar: 'إضافة صفحة ديناميكية' })}
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {['home', 'contact', 'policy'].map(id => (
+              <div key={id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm group hover:shadow-xl transition-all relative">
+                <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
+                  <FileText className="w-6 h-6 text-gray-400" />
+                </div>
+                <h3 className="text-xl font-bold uppercase tracking-tight mb-2">{id === 'home' ? t({ en: 'Home Page', ar: 'الصفحة الرئيسية' }) : id === 'contact' ? t({ en: 'Contact Us', ar: 'اتصل بنا' }) : t({ en: 'Policies', ar: 'السياسات' })}</h3>
+                <p className="text-xs font-black text-gray-300 uppercase tracking-widest mb-6">System Page</p>
+                <button 
+                  onClick={() => {
+                    setEditingPageId(id);
+                    setCurrentPage('admin-page-editor');
+                  }}
+                  className="w-full py-4 bg-gray-100 text-black rounded-2xl font-bold hover:bg-black hover:text-white transition-all text-sm"
+                >
+                  {t({ en: 'Edit Full Screen', ar: 'تعديل ملء الشاشة' })}
+                </button>
+              </div>
+            ))}
+            
+            {allPages.filter(p => !['home', 'contact', 'policy'].includes(p.id)).map(page => (
+              <div key={page.id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm group hover:shadow-xl transition-all relative">
+                <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6">
+                  <Globe className="w-6 h-6 text-emerald-500" />
+                </div>
+                <h3 className="text-xl font-bold uppercase tracking-tight mb-2">{page.id}</h3>
+                <p className="text-xs font-black text-emerald-300 uppercase tracking-widest mb-6">{t({ en: 'Dynamic Page', ar: 'صفحة ديناميكية' })}</p>
+                
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => {
+                      setEditingPageId(page.id);
+                      setCurrentPage('admin-page-editor');
+                    }}
+                    className="flex-1 py-4 bg-gray-100 text-black rounded-2xl font-bold hover:bg-black hover:text-white transition-all text-sm"
+                  >
+                    {t({ en: 'Edit', ar: 'تعديل' })}
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (confirm(t({ en: 'Delete this page?', ar: 'حذف هذه الصفحة؟' }))) {
+                        await deleteDoc(doc(db, 'pages', page.id));
+                      }
+                    }}
+                    className="p-4 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-50">
+                  <span className="text-[10px] font-bold text-gray-400">Path: /p/{page.id}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {activeSubTab === 'regions' && <RegionsManagement />}
       {activeSubTab === 'delivery-methods' && <DeliveryMethodsManagement categories={categories} />}
@@ -6780,10 +6881,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [currentPage, setCurrentPage] = useState('home');
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const [viewingPageId, setViewingPageId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
+  const [allPages, setAllPages] = useState<any[]>([]);
   const [lang, setLangState] = useState<'en' | 'ar'>(() => {
     const saved = localStorage.getItem('kuzama_lang');
     return (saved === 'en' || saved === 'ar') ? saved : 'en';
@@ -6931,6 +7035,16 @@ export default function App() {
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'stores'));
     return unsub;
   }, []);
+
+  // Fetch all pages for admin
+  useEffect(() => {
+    if (profile?.role === 'admin') {
+      const unsub = onSnapshot(collection(db, 'pages'), (snap) => {
+        setAllPages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'pages'));
+      return unsub;
+    }
+  }, [profile]);
 
   // Fetch App Settings
   useEffect(() => {
@@ -7165,15 +7279,17 @@ export default function App() {
                       dir={lang === 'ar' ? 'rtl' : 'ltr'}
                       style={{ backgroundColor: config.theme.background, color: config.theme.text }}
                     >
-              <Navbar 
-                currentPage={currentPage}
-                onNavigate={(page) => {
-                  setCurrentPage(page);
-                  setSelectedProduct(null);
-                }} 
-              />
+              {currentPage !== 'admin-page-editor' && (
+                <Navbar 
+                  currentPage={currentPage}
+                  onNavigate={(page) => {
+                    setCurrentPage(page);
+                    setSelectedProduct(null);
+                  }} 
+                />
+              )}
               
-              <main className="pb-20">
+              <main className={`${currentPage !== 'admin-page-editor' ? 'pb-20' : ''}`}>
                 <AnimatePresence mode="wait">
                   {selectedProduct ? (
                     <motion.div 
@@ -7335,18 +7451,40 @@ export default function App() {
                       )}
                       {currentPage === 'cart' && <CartPage onCheckout={() => setCurrentPage('checkout')} />}
                       {currentPage === 'checkout' && <CheckoutPage onComplete={() => setCurrentPage('orders')} />}
-                      {currentPage === 'admin' && <AdminPanel />}
                       {currentPage === 'orders' && <OrdersPage />}
                       {currentPage === 'wishlist' && <WishlistPage onSelectProduct={setSelectedProduct} />}
-                      {currentPage === 'profile' && <ProfilePage onNavigate={setCurrentPage} />}
+                      {currentPage === 'profile' && (
+                        <ProfilePage 
+                          onNavigate={setCurrentPage} 
+                          setEditingPageId={setEditingPageId}
+                          allPages={allPages}
+                        />
+                      )}
                       {currentPage === 'contact' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="contact" onNavigate={setCurrentPage} /></div>}
                       {currentPage === 'policy' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="policy" onNavigate={setCurrentPage} /></div>}
+                      {currentPage.startsWith('p/') && (
+                        <div className="max-w-7xl mx-auto px-6">
+                          <PuckPage pageId={currentPage.split('/')[1]} onNavigate={setCurrentPage} />
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
 
+                {currentPage === 'admin' && (
+                  <AdminPanel 
+                    setCurrentPage={setCurrentPage} 
+                    setEditingPageId={setEditingPageId} 
+                    allPages={allPages} 
+                  />
+                )}
+
+                {currentPage === 'admin-page-editor' && editingPageId && (
+                  <PageEditor pageId={editingPageId} onClose={() => setCurrentPage('admin')} />
+                )}
+
                 {/* Simple Footer */}
-                {!['admin', 'cart', 'checkout'].includes(currentPage) && (
+                {!['admin', 'cart', 'checkout', 'admin-page-editor'].includes(currentPage) && (
                   <footer className="hidden md:block mt-20 border-t border-gray-100 py-12 px-6 bg-white overflow-hidden">
                     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
                       <div className="space-y-4">
