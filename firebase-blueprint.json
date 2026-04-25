@@ -218,6 +218,24 @@
         },
         "maintenanceMode": { "type": "boolean" }
       }
+    },
+    "Page": {
+      "title": "Page",
+      "description": "A dynamic page content managed via Puck editor with multi-language support.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Page slug or ID (e.g., 'home', 'contact')" },
+        "body": {
+          "type": "object",
+          "properties": {
+            "en": { "type": "object", "description": "Puck editor JSON content for English" },
+            "ar": { "type": "object", "description": "Puck editor JSON content for Arabic" }
+          },
+          "description": "Localized page content"
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "body"]
     }
   },
   "firestore": {
@@ -264,6 +282,10 @@
     "/settings/{settingId}": {
       "schema": "AppSettings",
       "description": "Global settings documents."
+    },
+    "/pages/{pageId}": {
+      "schema": "Page",
+      "description": "CMS pages managed by Puck."
     }
   }
 }

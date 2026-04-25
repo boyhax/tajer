@@ -194,6 +194,7 @@ export interface DeliveryMethod {
   isDefault: boolean;
   isPublished: boolean;
   categories: string[]; // Array of category IDs
+  requiresCoords?: boolean;
   createdAt: any;
 }
 
@@ -206,4 +207,12 @@ export interface AppSettings {
   supportedAddressModes: ('normal' | 'map')[];
   appName?: LocalizedString;
   appDescription?: LocalizedString;
+  socialLinks?: {
+    instagram?: string;
+    twitter?: string;
+    facebook?: string;
+    whatsapp?: string;
+    snapchat?: string;
+    tiktok?: string;
+  };
 }

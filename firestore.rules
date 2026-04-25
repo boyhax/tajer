@@ -28,6 +28,11 @@ service cloud.firestore {
       allow write: if isAuthenticated() && (isOwner(userId) || isAdmin());
     }
 
+    match /pages/{pageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();

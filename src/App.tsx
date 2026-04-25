@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef, useMemo } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -86,11 +86,15 @@ import {
   Cookie,
   Building2,
   Info,
-  Map as MapIcon
+  Map as MapIcon,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
 import L from 'leaflet';
+import { Puck, Render } from "@measured/puck";
+import "@measured/puck/dist/index.css";
+import { config as puckConfig } from "./lib/puck";
 
 // Fix Leaflet marker icon issue
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -239,13 +243,29 @@ const DeliveryMethodsProvider = ({ children }: { children: React.ReactNode }) =>
 
 export const useDeliveryMethods = () => useContext(DeliveryMethodsContext);
 
-const LanguageContext = createContext<{
+export const LanguageContext = createContext<{
   lang: 'en' | 'ar';
   setLang: (l: 'en' | 'ar') => void;
   t: (ls: LocalizedString | string | any) => string;
 }>({ lang: 'en', setLang: () => {}, t: (ls) => typeof ls === 'string' ? ls : (ls?.en || '') });
 
-const SettingsContext = createContext<{
+export const DataContext = createContext<{
+  products: Product[];
+  categories: Category[];
+  stores: Store[];
+  tags: Tag[];
+  brands: string[];
+  loading: boolean;
+}>({
+  products: [],
+  categories: [],
+  stores: [],
+  tags: [],
+  brands: [],
+  loading: true
+});
+
+export const SettingsContext = createContext<{
   appSettings: AppSettings;
   updateAppSettings: (settings: Partial<AppSettings>) => Promise<void>;
 }>({
@@ -259,7 +279,7 @@ const SettingsContext = createContext<{
   updateAppSettings: async () => {}
 });
 
-const CartContext = createContext<{
+export const CartContext = createContext<{
   cart: CartItem[];
   addToCart: (product: Product) => void;
   removeFromCart: (productId: string) => void;
@@ -267,7 +287,7 @@ const CartContext = createContext<{
   total: number;
 }>({ cart: [], addToCart: () => {}, removeFromCart: () => {}, clearCart: () => {}, total: 0 });
 
-const AuthContext = createContext<{
+export const AuthContext = createContext<{
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
@@ -906,6 +926,14 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
         <span className="text-[7px] font-bold uppercase">{t({ en: 'Orders', ar: 'الطلبات' })}</span>
       </button>
 
+      <button 
+        onClick={() => onNavigate('shop')}
+        className={`flex flex-col items-center gap-0.5 ${currentPage === 'shop' ? 'text-black' : 'text-gray-400'}`}
+      >
+        <ShoppingBag className="w-[18px] h-[18px]" />
+        <span className="text-[7px] font-bold uppercase">{t({ en: 'Shop', ar: 'المتجر' })}</span>
+      </button>
+
       {user && (
         <button 
           onClick={() => onNavigate('wishlist')}
@@ -1459,7 +1487,7 @@ const AddressDrawer = ({
   onSave, 
   initialAddress, 
   initialCoords, 
-  initialMode = 'map',
+  initialMode = 'normal',
   initialDetails,
   t 
 }: { 
@@ -1472,11 +1500,9 @@ const AddressDrawer = ({
   initialDetails?: AddressDetails,
   t: (ls: any) => string
 }) => {
-  const { appSettings } = useContext(SettingsContext);
-  const supportedModes = appSettings.supportedAddressModes || ['normal', 'map'];
-  const [mode, setMode] = useState<'normal' | 'map'>(initialMode);
   const [address, setAddress] = useState(initialAddress);
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(initialCoords);
+  const [showMap, setShowMap] = useState(false);
   const { regions } = useRegions();
 
   const [details, setDetails] = useState<AddressDetails>(initialDetails || {
@@ -1492,37 +1518,31 @@ const AddressDrawer = ({
     if (isOpen) {
       setAddress(initialAddress);
       setCoords(initialCoords);
-      // Ensure initial mode is supported, else pick first available
-      if (!supportedModes.includes(initialMode as any)) {
-        setMode(supportedModes[0] as any);
-      } else {
-        setMode(initialMode);
-      }
       if (initialDetails) setDetails(initialDetails);
+      setShowMap(!!initialCoords && initialMode === 'map');
     }
-  }, [isOpen, initialAddress, initialCoords, initialMode, initialDetails, supportedModes]);
+  }, [isOpen, initialAddress, initialCoords, initialMode, initialDetails]);
 
-  // Update string address when details change in normal mode
+  // Update string address when details change
   useEffect(() => {
-    if (mode === 'normal') {
-      const regionName = regions.find(r => r.id === details.regionId)?.name || '';
-      const parts = [
-        regionName,
-        details.streetName ? `${t({ en: 'Street', ar: 'شارع' })}: ${details.streetName}` : '',
-        details.buildingNumber ? `${t({ en: 'Building', ar: 'بناية' })}: ${details.buildingNumber}` : '',
-        details.floorNumber ? `${t({ en: 'Floor', ar: 'طابق' })}: ${details.floorNumber}` : '',
-        details.apartmentNumber ? `${t({ en: 'Apartment', ar: 'شقة' })}: ${details.apartmentNumber}` : '',
-      ].filter(Boolean);
-      setAddress(parts.join(', '));
-    }
-  }, [details, mode, regions, t]);
+    const regionName = regions.find(r => r.id === details.regionId)?.name || '';
+    const parts = [
+      regionName,
+      details.streetName ? `${t({ en: 'Street', ar: 'شارع' })}: ${details.streetName}` : '',
+      details.buildingNumber ? `${t({ en: 'Building', ar: 'بناية' })}: ${details.buildingNumber}` : '',
+      details.floorNumber ? `${t({ en: 'Floor', ar: 'طابق' })}: ${details.floorNumber}` : '',
+      details.apartmentNumber ? `${t({ en: 'Apartment', ar: 'شقة' })}: ${details.apartmentNumber}` : '',
+    ].filter(Boolean);
+    setAddress(parts.join(', '));
+  }, [details, regions, t]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
       const data = await response.json();
       if (data.display_name) {
-        setAddress(data.display_name);
+        // If we geocode, we might want to fill some details if possible, but let's keep it simple for now
+        // and just update the main address string or set a flag
       }
     } catch (error) {
       console.error('Reverse geocoding failed:', error);
@@ -1535,6 +1555,10 @@ const AddressDrawer = ({
         const { latitude, longitude } = pos.coords;
         setCoords({ lat: latitude, lng: longitude });
         reverseGeocode(latitude, longitude);
+        const region = getRegionForPoint({ lat: latitude, lng: longitude }, regions);
+        if (region && !details.regionId) {
+          setDetails(prev => ({ ...prev, regionId: region.id }));
+        }
       }, (err) => {
         console.error(err);
         alert(t({ en: 'Could not get location', ar: 'تعذر الحصول على الموقع' }));
@@ -1557,34 +1581,10 @@ const AddressDrawer = ({
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            className="relative bg-white w-full max-w-2xl h-[85vh] sm:h-[90vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col"
+            className="relative bg-white w-full max-w-2xl h-[90vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col"
           >
-            {/* Header / Mode Switcher */}
             <div className="p-6 border-b border-gray-100 flex items-center justify-between z-20 bg-white">
-              <div className="flex bg-gray-100 p-1 rounded-2xl">
-                {supportedModes.includes('map') && (
-                  <button 
-                    onClick={() => setMode('map')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                      mode === 'map' ? 'bg-white shadow-sm text-black' : 'text-gray-500'
-                    }`}
-                  >
-                    <MapIcon className="w-4 h-4" />
-                    {t({ en: 'Map Picker', ar: 'تحديد من الخريطة' })}
-                  </button>
-                )}
-                {supportedModes.includes('normal') && (
-                  <button 
-                    onClick={() => setMode('normal')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                      mode === 'normal' ? 'bg-white shadow-sm text-black' : 'text-gray-500'
-                    }`}
-                  >
-                    <Building2 className="w-4 h-4" />
-                    {t({ en: 'Normal Address', ar: 'عنوان عادي' })}
-                  </button>
-                )}
-              </div>
+              <h2 className="text-xl font-bold">{t({ en: 'Delivery Address', ar: 'عنوان التوصيل' })}</h2>
               <button 
                 onClick={onClose}
                 className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
@@ -1593,177 +1593,144 @@ const AddressDrawer = ({
               </button>
             </div>
 
-            <div className="flex-1 relative overflow-y-auto">
-              {mode === 'map' ? (
-                <>
-                  {/* Full Map */}
-                  <div className="absolute inset-0 z-0">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Region Selector */}
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Region (Mandatory)', ar: 'المنطقة (إلزامي)' })}</label>
+                <select 
+                  value={details.regionId}
+                  onChange={(e) => setDetails({ ...details, regionId: e.target.value })}
+                  className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none font-bold"
+                >
+                  <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
+                  {regions.map(region => (
+                    <option key={region.id} value={region.id}>{region.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Address Form */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Street Name', ar: 'اسم الشارع' })}</label>
+                  <input 
+                    type="text" 
+                    value={details.streetName}
+                    onChange={(e) => setDetails({ ...details, streetName: e.target.value })}
+                    placeholder={t({ en: 'e.g. Al Khalidiyah St', ar: 'مثلاً شارع الخالدية' })}
+                    className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Building Number', ar: 'رقم البناية' })}</label>
+                  <input 
+                    type="text" 
+                    value={details.buildingNumber}
+                    onChange={(e) => setDetails({ ...details, buildingNumber: e.target.value })}
+                    placeholder={t({ en: 'e.g. 12', ar: 'مثلاً 12' })}
+                    className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Floor Number', ar: 'رقم الطابق' })}</label>
+                  <input 
+                    type="text" 
+                    value={details.floorNumber}
+                    onChange={(e) => setDetails({ ...details, floorNumber: e.target.value })}
+                    placeholder={t({ en: 'e.g. 3', ar: 'مثلاً 3' })}
+                    className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Apartment Number', ar: 'رقم الشقة' })}</label>
+                  <input 
+                    type="text" 
+                    value={details.apartmentNumber}
+                    onChange={(e) => setDetails({ ...details, apartmentNumber: e.target.value })}
+                    placeholder={t({ en: 'e.g. 304', ar: 'مثلاً 304' })}
+                    className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Additional Instructions (Optional)', ar: 'تعليمات إضافية (اختياري)' })}</label>
+                <textarea 
+                  value={details.additionalInstructions}
+                  onChange={(e) => setDetails({ ...details, additionalInstructions: e.target.value })}
+                  placeholder={t({ en: 'Near the supermarket, etc...', ar: 'بجانب السوبر ماركت، الخ...' })}
+                  className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none resize-none min-h-[80px]"
+                />
+              </div>
+
+              {/* Map Toggle Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold uppercase text-gray-400">{t({ en: 'Precise Map Location', ar: 'موقع الخريطة الدقيق' })}</label>
+                  <button 
+                    onClick={() => setShowMap(!showMap)}
+                    className="text-xs font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-colors"
+                  >
+                    <MapIcon className="w-3.5 h-3.5" />
+                    {showMap ? t({ en: 'Hide Map', ar: 'إخفاء الخريطة' }) : t({ en: 'Show Map', ar: 'إظهار الخريطة' })}
+                  </button>
+                </div>
+
+                {showMap && (
+                  <div className="h-[250px] rounded-[32px] overflow-hidden border border-gray-100 relative">
                     <MapPicker 
                       t={t}
                       className="h-full"
                       initialCoords={coords} 
                       onLocationSelect={(lat, lng) => {
                         setCoords({ lat, lng });
-                        reverseGeocode(lat, lng);
+                        const region = getRegionForPoint({ lat, lng }, regions);
+                        if (region && !details.regionId) {
+                          setDetails(prev => ({ ...prev, regionId: region.id }));
+                        }
                       }} 
                     />
+                    <button 
+                      onClick={getCurrentLocation}
+                      className="absolute top-4 left-4 z-10 p-2 bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-white/20"
+                    >
+                      <MapPin className="w-5 h-5 text-emerald-500" />
+                    </button>
+                    {coords && (
+                      <div className="absolute bottom-4 left-4 right-4 z-10 p-2 bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-white/20 text-[10px] font-bold text-center text-emerald-600">
+                        {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+                      </div>
+                    )}
                   </div>
+                )}
+              </div>
 
-                  {/* Floating Location Button */}
-                  <button 
-                    onClick={getCurrentLocation}
-                    className="absolute top-6 left-6 z-10 p-3 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl hover:bg-white transition-all border border-white/20 flex items-center gap-2 group"
-                  >
-                    <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                      <MapPin className="w-4 h-4" />
-                    </div>
-                    <span className="text-xs font-bold text-gray-900 pr-2">{t({ en: 'Current Location', ar: 'موقعي الحالي' })}</span>
-                  </button>
-
-                  <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
-                    <div className="bg-white/95 backdrop-blur-xl rounded-2xl md:rounded-[32px] p-4 md:p-6 shadow-2xl border border-white/20 space-y-3 md:space-y-4">
-                      <div className="space-y-1 md:space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400">{t({ en: 'Selected Address', ar: 'العنوان المختار' })}</label>
-                          {coords && (
-                            <span className="text-[8px] md:text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                              {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-                            </span>
-                          )}
-                        </div>
-                        <textarea 
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                          placeholder={t({ en: 'Tap map to select or enter address...', ar: 'اضغط على الخريطة أو أدخل العنوان...' })}
-                          className="w-full p-3 md:p-4 bg-gray-50/50 rounded-xl md:rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black min-h-[60px] md:min-h-[80px] text-xs md:text-sm resize-none"
-                        />
-                      </div>
-                      
-                      {coords && (
-                        <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
-                          <MapIcon className="w-4 h-4 text-emerald-600" />
-                          <div className="flex-1">
-                            <p className="text-[10px] font-bold text-emerald-900 leading-none">
-                              {getRegionForPoint(coords, regions)?.name || t({ en: 'Outside Delivery Zones', ar: 'خارج مناطق التوصيل' })}
-                            </p>
-                            <p className="text-[8px] text-emerald-600 mt-1 uppercase font-black tracking-widest">{t({ en: 'Detected Region', ar: 'المنطقة المكتشفة' })}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      <button 
-                        onClick={() => {
-                          const detectedRegion = coords ? getRegionForPoint(coords, regions) : null;
-                          const finalDetails = detectedRegion ? { ...details, regionId: detectedRegion.id } : details;
-                          onSave(address, coords, 'map', finalDetails);
-                          onClose();
-                        }}
-                        className="w-full py-3 md:py-4 bg-black text-white rounded-xl md:rounded-2xl font-bold hover:bg-gray-900 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2 group text-sm md:text-base"
-                      >
-                        <span>{t({ en: 'Confirm Map Location', ar: 'تأكيد موقع الخريطة' })}</span>
-                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="p-6 space-y-6">
-                  {/* Normal Address Form */}
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Region', ar: 'المنطقة' })}</label>
-                      <select 
-                        value={details.regionId}
-                        onChange={(e) => setDetails({ ...details, regionId: e.target.value })}
-                        className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
-                      >
-                        <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
-                        {regions.map(region => (
-                          <option key={region.id} value={region.id}>{region.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Street Name', ar: 'اسم الشارع' })}</label>
-                        <input 
-                          type="text" 
-                          value={details.streetName}
-                          onChange={(e) => setDetails({ ...details, streetName: e.target.value })}
-                          placeholder={t({ en: 'e.g. Al Khalidiyah St', ar: 'مثلاً شارع الخالدية' })}
-                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Building Number', ar: 'رقم البناية' })}</label>
-                        <input 
-                          type="text" 
-                          value={details.buildingNumber}
-                          onChange={(e) => setDetails({ ...details, buildingNumber: e.target.value })}
-                          placeholder={t({ en: 'e.g. 12', ar: 'مثلاً 12' })}
-                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Floor Number', ar: 'رقم الطابق' })}</label>
-                        <input 
-                          type="text" 
-                          value={details.floorNumber}
-                          onChange={(e) => setDetails({ ...details, floorNumber: e.target.value })}
-                          placeholder={t({ en: 'e.g. 3', ar: 'مثلاً 3' })}
-                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Apartment Number', ar: 'رقم الشقة' })}</label>
-                        <input 
-                          type="text" 
-                          value={details.apartmentNumber}
-                          onChange={(e) => setDetails({ ...details, apartmentNumber: e.target.value })}
-                          placeholder={t({ en: 'e.g. 304', ar: 'مثلاً 304' })}
-                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Additional Instructions (Optional)', ar: 'تعليمات إضافية (اختياري)' })}</label>
-                      <textarea 
-                        value={details.additionalInstructions}
-                        onChange={(e) => setDetails({ ...details, additionalInstructions: e.target.value })}
-                        placeholder={t({ en: 'Near the supermarket, etc...', ar: 'بجانب السوبر ماركت، الخ...' })}
-                        className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none resize-none min-h-[80px]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-emerald-50 rounded-3xl flex gap-3 items-start">
-                    <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-200">
-                      <Info className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">{t({ en: 'Address Preview', ar: 'معاينة العنوان' })}</p>
-                      <p className="text-[11px] text-emerald-700 leading-relaxed mt-1">{address || t({ en: 'Please fill details to generate address...', ar: 'يرجى تعبئة التفاصيل لإنشاء العنوان...' })}</p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={() => {
-                      if (!details.regionId) return alert(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
-                      onSave(address, null, 'normal', details);
-                      onClose();
-                    }}
-                    className="w-full py-4 bg-black text-white rounded-3xl font-bold hover:bg-gray-900 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2 group text-base"
-                  >
-                    <span>{t({ en: 'Save Address Details', ar: 'حفظ تفاصيل العنوان' })}</span>
-                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
+              <div className="p-4 bg-emerald-50 rounded-3xl flex gap-3 items-start">
+                <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-200">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
-              )}
+                <div>
+                  <p className="text-xs font-bold text-gray-900">{t({ en: 'Address Summary', ar: 'ملخص العنوان' })}</p>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed mt-1">{address || t({ en: 'Please fill details...', ar: 'يرجى تعبئة التفاصيل...' })}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+              <button 
+                onClick={() => {
+                  if (!details.regionId) return alert(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
+                  onSave(address, coords, coords ? 'map' : 'normal', details);
+                  onClose();
+                }}
+                className="w-full py-4 bg-black text-white rounded-3xl font-bold hover:bg-gray-900 transition-all shadow-xl flex items-center justify-center gap-2"
+              >
+                <span>{t({ en: 'Save Address', ar: 'حفظ العنوان' })}</span>
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
           </motion.div>
         </div>
@@ -1800,53 +1767,34 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
   const [address, setAddress] = useState(savedAddress || profile?.address || '');
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(savedLocation || profile?.defaultLocation || null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [addressMode, setAddressMode] = useState<'normal' | 'map'>(profile?.addressMode || 'map');
   const [addressDetails, setAddressDetails] = useState<AddressDetails | undefined>(profile?.addressDetails);
   const [isAddressDrawerOpen, setIsAddressDrawerOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('');
 
-  const { deliveryMethods, addDeliveryMethod, updateDeliveryMethod, deleteDeliveryMethod, setDefaultMethod } = useDeliveryMethods();
+  const { deliveryMethods } = useDeliveryMethods();
   const { regions } = useRegions();
 
   useEffect(() => {
     if (profile) {
       if (!savedAddress && profile.address) setAddress(profile.address);
       if (!savedLocation && profile.defaultLocation) setCoords(profile.defaultLocation);
-      setAddressMode(profile.addressMode || 'map');
       setAddressDetails(profile.addressDetails);
     }
   }, [profile, savedAddress, savedLocation]);
+
+  useEffect(() => {
+    if (deliveryMethods.length > 0) {
+      const def = deliveryMethods.find(m => m.isDefault) || deliveryMethods[0];
+      setSelectedMethodId(def.id);
+    }
+  }, [deliveryMethods]);
 
   useEffect(() => {
     if (!appSettings.paymentMethods.online && appSettings.paymentMethods.cod) {
       setPaymentMethod('cod');
     }
   }, [appSettings.paymentMethods.online, appSettings.paymentMethods.cod]);
-
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const { latitude, longitude } = pos.coords;
-        setCoords({ lat: latitude, lng: longitude });
-        reverseGeocode(latitude, longitude);
-      }, (err) => {
-        console.error(err);
-        setCheckoutError(t({ en: 'Could not get location. Please enable location permissions.', ar: 'تعذر الحصول على الموقع. يرجى تفعيل أذونات الموقع.' }));
-      });
-    }
-  };
-
-  const reverseGeocode = async (lat: number, lng: number) => {
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
-      const data = await response.json();
-      if (data.display_name) {
-        setAddress(data.display_name);
-      }
-    } catch (error) {
-      console.error('Reverse geocoding failed:', error);
-    }
-  };
 
   const [selectedRegionId, setSelectedRegionId] = useState(addressDetails?.regionId || '');
 
@@ -1865,36 +1813,30 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       setCheckoutError(t({ en: 'Please sign in to checkout', ar: 'يرجى تسجيل الدخول لإتمام الشراء' }));
       return;
     }
+
+    const selectedMethod = deliveryMethods.find(m => m.id === selectedMethodId);
+    if (!selectedMethod) {
+      setCheckoutError(t({ en: 'Please select a delivery method', ar: 'يرجى اختيار طريقة التوصيل' }));
+      return;
+    }
+
     if (!selectedRegionId) {
       setCheckoutError(t({ en: 'Please select a delivery region', ar: 'يرجى اختيار منطقة التوصيل' }));
       return;
     }
+
     if (!address) {
       setCheckoutError(t({ en: 'Please provide a shipping address', ar: 'يرجى تقديم عنوان الشحن' }));
       return;
     }
 
-    if (appSettings.restrictDeliveryToRegions) {
-      const region = regions.find(r => r.id === selectedRegionId);
-      if (!region) {
-        setCheckoutError(t({ en: 'Invalid region selected', ar: 'المنطقة المختارة غير صالحة' }));
-        return;
-      }
-      
-      // If we have coords and restriction is on, check if coords match the selected region
-      if (coords) {
-        const detectedRegion = getRegionForPoint(coords, regions);
-        if (detectedRegion && detectedRegion.id !== selectedRegionId) {
-          // Warning or restriction? Let's be strict if they selected a specific point
-          // But user wants to "not complicate", so maybe we trust the selected region more
-          // or just ensure a region is selected.
-        }
-      }
+    if (selectedMethod.requiresCoords && !coords) {
+      setCheckoutError(t({ en: 'This delivery method requires pinning your location on the map', ar: 'طريقة التوصيل هذه تتطلب تحديد موقعك على الخريطة' }));
+      return;
     }
 
     setLoading(true);
     try {
-      // 1. Create Order in Firestore
       const orderData = cleanObject({
         userId: user.uid,
         items: cart.map(item => ({
@@ -1906,12 +1848,12 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         totalAmount: total,
         status: 'pending',
         paymentMethod,
+        deliveryMethodId: selectedMethodId,
         createdAt: serverTimestamp(),
         customerInfo: {
           name: user?.displayName || '',
           email: user?.email || '',
           address: address,
-          addressMode,
           addressDetails: addressDetails || null,
           destinationCoords: coords || null,
           regionId: selectedRegionId || null
@@ -1925,7 +1867,6 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         return;
       }
 
-      // 2. Initiate MyFatoorah Payment via Backend
       const response = await fetch('/api/payment/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1942,24 +1883,19 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       if (data.IsSuccess) {
         window.location.href = data.Data.PaymentURL;
       } else {
-        const validationError = data.ValidationErrors?.[0]?.Error || data.ValidationErrors?.[0]?.Message;
-        const errorMessage = data.Message || validationError || 'Payment initiation failed';
-        throw new Error(errorMessage);
+        throw new Error(data.Message || 'Payment initiation failed');
       }
     } catch (error: any) {
       console.error(error);
-      setCheckoutError(t({ 
-        en: `Checkout failed: ${error.message}`, 
-        ar: `فشلت عملية الشراء: ${error.message}` 
-      }));
+      setCheckoutError(t({ en: `Checkout failed: ${error.message}`, ar: `فشلت عملية الشراء: ${error.message}` }));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-1 md:p-4">
-      <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
+    <div className="max-w-2xl mx-auto p-1 md:p-4 pb-20">
+      <h1 className="text-xl md:text-3xl font-bold mb-6">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
       
       <AnimatePresence>
         {checkoutError && (
@@ -1970,142 +1906,159 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
             className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3"
           >
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-red-900">{t({ en: 'Order Error', ar: 'خطأ في الطلب' })}</h4>
-              <p className="text-xs text-red-700 mt-1">{checkoutError}</p>
-            </div>
-            <button 
-              onClick={() => setCheckoutError(null)}
-              className="text-red-400 hover:text-red-500 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex-1 text-xs text-red-700">{checkoutError}</div>
+            <button onClick={() => setCheckoutError(null)} className="text-red-400 hover:text-red-500"><X className="w-4 h-4" /></button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="space-y-3 md:space-y-6">
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-3 md:p-6 shadow-sm">
-          <h3 className="font-bold text-sm md:text-lg mb-2 md:mb-4">{t({ en: 'Shipping Information', ar: 'معلومات الشحن' })}</h3>
-          <div className="space-y-2 md:space-y-4">
-            <div>
-              <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Full Name', ar: 'الاسم الكامل' })}</label>
-              <div className="p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm">{user?.displayName}</div>
-            </div>
-            <div>
-              <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Delivery Region', ar: 'منطقة التوصيل' })}</label>
-              <select 
-                value={selectedRegionId}
-                onChange={(e) => setSelectedRegionId(e.target.value)}
-                className="w-full p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm border-none focus:ring-2 focus:ring-emerald-500 outline-none"
-              >
-                <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
-                {regions.map(region => (
-                  <option key={region.id} value={region.id}>{region.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2 md:space-y-4">
-              <div className="flex justify-between items-center mb-0.5 md:mb-1">
-                <label className="text-[9px] font-bold uppercase text-gray-400">{t({ en: 'Shipping Address', ar: 'عنوان الشحن' })}</label>
+      <div className="space-y-6">
+        {/* Delivery Region & Method */}
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-6">
+          <div>
+            <label className="text-[10px] font-bold uppercase text-gray-400 mb-2 block">{t({ en: 'Delivery Region', ar: 'منطقة التوصيل' })}</label>
+            <select 
+              value={selectedRegionId}
+              onChange={(e) => setSelectedRegionId(e.target.value)}
+              className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none font-bold"
+            >
+              <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
+              {regions.map(region => (
+                <option key={region.id} value={region.id}>{region.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase text-gray-400 mb-3 block">{t({ en: 'Delivery Method', ar: 'طريقة التوصيل' })}</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {deliveryMethods.filter(m => m.isPublished).map(method => (
                 <button 
-                  onClick={() => setIsAddressDrawerOpen(true)}
-                  className="text-[8px] md:text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg transition-colors"
+                  key={method.id}
+                  onClick={() => setSelectedMethodId(method.id)}
+                  className={`p-4 rounded-xl border-2 transition-all text-left relative ${
+                    selectedMethodId === method.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
+                  }`}
                 >
-                  <MapPin className="w-2 h-2 md:w-3 md:h-3" />
-                  {t({ en: 'Change Address', ar: 'تغيير العنوان' })}
+                  <div className="font-bold text-sm mb-1">{method.name}</div>
+                  <div className="text-[10px] text-gray-500 line-clamp-1">{method.description}</div>
+                  {method.requiresCoords && (
+                    <div className="mt-2 flex items-center gap-1 text-[9px] text-emerald-600 font-bold">
+                      <MapIcon className="w-3 h-3" />
+                      {t({ en: 'Requires Map Pin', ar: 'يتطلب تحديد الموقع' })}
+                    </div>
+                  )}
+                  {selectedMethodId === method.id && (
+                    <div className="absolute top-2 right-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    </div>
+                  )}
                 </button>
-              </div>
-              
-              <div className="p-2.5 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl border border-gray-100">
-                <p className="text-[11px] md:text-sm text-gray-600 leading-relaxed">
-                  {address || t({ en: 'No address selected', ar: 'لم يتم اختيار عنوان' })}
-                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Address Info */}
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-sm md:text-base">{t({ en: 'Shipping Address', ar: 'عنوان الشحن' })}</h3>
+            <button 
+              onClick={() => setIsAddressDrawerOpen(true)}
+              className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2.5 py-1.5 rounded-lg"
+            >
+              <MapPin className="w-3 h-3" />
+              {t({ en: 'Modify Address', ar: 'تعديل العنوان' })}
+            </button>
+          </div>
+          
+          <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 min-h-[60px]">
+            {address ? (
+              <div className="space-y-1">
+                <p className="text-sm text-gray-700 leading-relaxed font-medium">{address}</p>
                 {coords && (
-                  <div className="mt-1 md:mt-2 flex items-center gap-1 text-[8px] md:text-[10px] text-emerald-600 font-bold">
-                    <CheckCircle2 className="w-2 h-2 md:w-3 md:h-3" />
-                    {t({ en: 'Precise location set', ar: 'تم تحديد الموقع بدقة' })}
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {t({ en: 'Map Location Set', ar: 'تم تحديد الموقع' })}
                   </div>
                 )}
               </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">{t({ en: 'No address provided', ar: 'لم يتم توفير عنوان' })}</p>
+            )}
+          </div>
 
-              <AddressDrawer 
-                isOpen={isAddressDrawerOpen}
-                onClose={() => setIsAddressDrawerOpen(false)}
-                initialAddress={address}
-                initialCoords={coords}
-                initialMode={addressMode}
-                initialDetails={addressDetails}
-                t={t}
-                onSave={(newAddress, newCoords, mode, details) => {
-                  setAddress(newAddress);
-                  setCoords(newCoords);
-                  setAddressMode(mode);
-                  setAddressDetails(details);
-                  if (details?.regionId) {
-                    setSelectedRegionId(details.regionId);
-                  } else if (newCoords) {
-                    const region = getRegionForPoint(newCoords, regions);
-                    if (region) setSelectedRegionId(region.id);
-                  }
-                }}
-              />
+          <AddressDrawer 
+            isOpen={isAddressDrawerOpen}
+            onClose={() => setIsAddressDrawerOpen(false)}
+            initialAddress={address}
+            initialCoords={coords}
+            initialDetails={addressDetails}
+            t={t}
+            onSave={(newAddress, newCoords, _mode, details) => {
+              setAddress(newAddress);
+              setCoords(newCoords);
+              setAddressDetails(details);
+              if (details?.regionId) setSelectedRegionId(details.regionId);
+            }}
+          />
+        </div>
+
+        {/* Payment & Summary omitted for brevity or I should keep them? I should keep them. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-bold text-base mb-4">{t({ en: 'Payment Method', ar: 'طريقة الدفع' })}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {appSettings.paymentMethods.online && (
+                <button 
+                  onClick={() => setPaymentMethod('online')}
+                  className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                    paymentMethod === 'online' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
+                  }`}
+                >
+                  <CreditCard className="w-6 h-6" />
+                  <span className="text-[10px] font-bold">{t({ en: 'Online', ar: 'إلكتروني' })}</span>
+                </button>
+              )}
+              {appSettings.paymentMethods.cod && (
+                <button 
+                  onClick={() => setPaymentMethod('cod')}
+                  className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                    paymentMethod === 'cod' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
+                  }`}
+                >
+                  <Banknote className="w-6 h-6" />
+                  <span className="text-[10px] font-bold">{t({ en: 'COD', ar: 'عند الاستلام' })}</span>
+                </button>
+              )}
             </div>
           </div>
-        </div>
 
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-sm">
-          <h3 className="font-bold text-base md:text-lg mb-3 md:mb-4">{t({ en: 'Payment Method', ar: 'طريقة الدفع' })}</h3>
-          <div className="grid grid-cols-2 gap-3 md:gap-4">
-            {appSettings.paymentMethods.online && (
-              <button 
-                onClick={() => setPaymentMethod('online')}
-                className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 transition-all flex flex-col items-center gap-1.5 md:gap-2 ${
-                  paymentMethod === 'online' ? 'border-black bg-gray-50' : 'border-gray-100'
-                }`}
-              >
-                <CreditCard className="w-5 h-5 md:w-6 md:h-6" />
-                <span className="text-[10px] md:text-xs font-bold">{t({ en: 'Online Payment', ar: 'دفع إلكتروني' })}</span>
-              </button>
-            )}
-            {appSettings.paymentMethods.cod && (
-              <button 
-                onClick={() => setPaymentMethod('cod')}
-                className={`p-3 md:p-4 rounded-lg md:rounded-xl border-2 transition-all flex flex-col items-center gap-1.5 md:gap-2 ${
-                  paymentMethod === 'cod' ? 'border-black bg-gray-50' : 'border-gray-100'
-                }`}
-              >
-                <Banknote className="w-5 h-5 md:w-6 md:h-6" />
-                <span className="text-[10px] md:text-xs font-bold">{t({ en: 'Cash on Delivery', ar: 'الدفع عند الاستلام' })}</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-sm">
-          <h3 className="font-bold text-base md:text-lg mb-3 md:mb-4">{t({ en: 'Order Summary', ar: 'ملخص الطلب' })}</h3>
-          <div className="space-y-1.5 md:space-y-2 mb-3 md:mb-4">
-            {cart.map(item => (
-              <div key={item.id} className="flex justify-between text-xs md:text-sm">
-                <span>{t(item.locals.name)} × {item.quantity}</span>
-                <span>{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="border-t pt-3 md:pt-4 flex justify-between items-center">
-            <span className="font-bold text-lg md:text-xl">{t({ en: 'Total', ar: 'المجموع' })}</span>
-            <span className="font-bold text-lg md:text-xl">{total.toFixed(2)} {t(config.currency.symbol)}</span>
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-bold text-base mb-4">{t({ en: 'Order Summary', ar: 'ملخص الطلب' })}</h3>
+            <div className="space-y-2 mb-4 max-h-[120px] overflow-y-auto">
+              {cart.map(item => (
+                <div key={item.id} className="flex justify-between text-xs">
+                  <span className="text-gray-500">{t(item.locals.name)} × {item.quantity}</span>
+                  <span className="font-bold">{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t pt-4 flex justify-between items-center">
+              <span className="font-bold text-lg">{t({ en: 'Total', ar: 'المجموع' })}</span>
+              <span className="font-bold text-lg text-emerald-600">{total.toFixed(2)} {t(config.currency.symbol)}</span>
+            </div>
           </div>
         </div>
 
         <button 
           onClick={handlePayment}
           disabled={loading}
-          className="w-full bg-black text-white py-4 md:py-5 rounded-xl md:rounded-2xl font-bold text-base md:text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-2 md:gap-3 disabled:opacity-50"
+          className="w-full bg-black text-white py-5 rounded-[24px] font-extrabold text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-black/10 active:scale-[0.98]"
         >
           {loading ? t({ en: 'Processing...', ar: 'جاري المعالجة...' }) : 
-           paymentMethod === 'online' ? t({ en: 'Pay with MyFatoorah', ar: 'الدفع بواسطة MyFatoorah' }) :
-           t({ en: 'Confirm Order (COD)', ar: 'تأكيد الطلب (الدفع عند الاستلام)' })}
+           paymentMethod === 'online' ? t({ en: 'Pay Now', ar: 'ادفع الآن' }) :
+           t({ en: 'Confirm Order', ar: 'تأكيد الطلب' })}
         </button>
       </div>
     </div>
@@ -3999,6 +3952,13 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
               />
               <span className="text-sm font-bold">{t({ en: 'Default Method', ar: 'الطريقة الافتراضية' })}</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="checkbox" checked={newMethod.requiresCoords} onChange={(e) => setNewMethod({ ...newMethod, requiresCoords: e.target.checked })}
+                className="w-4 h-4 accent-black"
+              />
+              <span className="text-sm font-bold text-emerald-600">{t({ en: 'Requires Map Pin', ar: 'يتطلب تحديد الموقع' })}</span>
+            </label>
           </div>
 
           <div className="flex gap-4">
@@ -4018,6 +3978,7 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-lg">{method.name}</h3>
+                  {method.requiresCoords && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[10px] font-bold rounded-full uppercase ml-1">{t({ en: 'Map Required', ar: 'يتطلب خريطة' })}</span>}
                   {method.isDefault && <span className="px-2 py-0.5 bg-black text-white text-[10px] font-bold rounded-full uppercase">{t({ en: 'Default', ar: 'افتراضي' })}</span>}
                 </div>
                 <p className="text-sm text-gray-500">{method.description}</p>
@@ -4066,6 +4027,129 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
   );
 };
 
+const PageEditor = () => {
+  const { t, lang: appLang } = useContext(LanguageContext);
+  const [selectedPageId, setSelectedPageId] = useState<string>('home');
+  const [editLang, setEditLang] = useState<'en' | 'ar'>(appLang);
+  const [fullData, setFullData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const pages = [
+    { id: 'home', label: { en: 'Home Page', ar: 'الصفحة الرئيسية' } },
+    { id: 'contact', label: { en: 'Contact Page', ar: 'صفحة اتصل بنا' } },
+    { id: 'policy', label: { en: 'Policy Page', ar: 'صفحة السياسات' } },
+  ];
+
+  useEffect(() => {
+    setLoading(true);
+    const unsub = onSnapshot(doc(db, 'pages', selectedPageId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setFullData(data.body || {});
+      } else {
+        setFullData({ en: { content: [], root: {} }, ar: { content: [], root: {} } });
+      }
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `pages/${selectedPageId}`);
+      setLoading(false);
+    });
+    return unsub;
+  }, [selectedPageId]);
+
+  const handleSave = async (data: any) => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'pages', selectedPageId), {
+        id: selectedPageId,
+        body: {
+          ...fullData,
+          [editLang]: data
+        },
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      alert(t({ en: 'Page saved!', ar: 'تم حفظ الصفحة!' }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `pages/${selectedPageId}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentContent = useMemo(() => {
+    if (!fullData) return { content: [], root: {} };
+    return fullData[editLang] || { content: [], root: {} };
+  }, [fullData, editLang]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-[80vh]">
+      <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white z-10 flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <label className="text-xs font-black uppercase text-gray-400 tracking-widest">{t({ en: 'Editing Page', ar: 'تعديل صفحة' })}:</label>
+          <div className="flex bg-gray-100 p-1 rounded-2xl overflow-x-auto">
+            {pages.map(page => (
+              <button 
+                key={page.id}
+                onClick={() => setSelectedPageId(page.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${
+                  selectedPageId === page.id ? 'bg-white shadow-sm text-black' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {t(page.label)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label className="text-xs font-black uppercase text-gray-400 tracking-widest">{t({ en: 'Language', ar: 'اللغة' })}:</label>
+          <div className="flex bg-emerald-50 p-1 rounded-2xl">
+            {(['en', 'ar'] as const).map(l => (
+              <button 
+                key={l}
+                onClick={() => setEditLang(l)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                  editLang === l ? 'bg-white shadow-sm text-emerald-600' : 'text-emerald-400 hover:text-emerald-600'
+                }`}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        {saving && (
+          <span className="text-xs font-bold text-emerald-500 animate-pulse">{t({ en: 'Saving...', ar: 'جاري الحفظ...' })}</span>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-hidden puck-editor-container" key={`${selectedPageId}-${editLang}`}>
+        <Puck
+          config={puckConfig}
+          data={currentContent}
+          onPublish={handleSave}
+        />
+      </div>
+      
+      <style>{`
+        .puck-editor-container .Puck {
+          height: 100% !important;
+        }
+        /* Fix puck branding / layout for our theme if needed */
+      `}</style>
+    </div>
+  );
+};
+
 const AdminPanel = () => {
   const { t } = useContext(LanguageContext);
   const { profile, user } = useContext(AuthContext);
@@ -4077,7 +4161,7 @@ const AdminPanel = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings' | 'regions' | 'delivery-methods'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings' | 'regions' | 'delivery-methods' | 'pages'>('products');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [adminMessage, setAdminMessage] = useState('');
@@ -4941,6 +5025,7 @@ const AdminPanel = () => {
           { id: 'regions', label: t({ en: 'Regions', ar: 'المناطق' }), icon: MapPin },
           { id: 'delivery-methods', label: t({ en: 'Delivery', ar: 'التوصيل' }), icon: Truck },
           { id: 'promotions', label: t({ en: 'Promotions', ar: 'العروض' }), icon: Bell },
+          { id: 'pages', label: t({ en: 'Pages', ar: 'الصفحات' }), icon: FileText },
           { id: 'app-settings', label: t({ en: 'App Settings', ar: 'إعدادات التطبيق' }), icon: Settings }
         ].map(tab => (
           <button
@@ -5794,63 +5879,41 @@ const AdminPanel = () => {
               </div>
             </div>
 
-            {/* Address Modes */}
-            <div className="space-y-4 pt-8 border-t border-gray-100">
+            {/* Social Links */}
+            <div className="space-y-6 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-emerald-500" />
-                {t({ en: 'Supported Address Modes', ar: 'أوضاع العناوين المدعومة' })}
+                <Globe className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Social Links', ar: 'روابط التواصل الاجتماعي' })}
               </h3>
-              <p className="text-xs text-gray-500 italic">{t({ en: 'Choose which methods users can use to provide their delivery address', ar: 'اختر الطرق التي يمكن للمستخدمين استخدامها لتقديم عنوان التوصيل الخاص بهم' })}</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <Home className="w-5 h-5" />
-                    <div className="flex flex-col">
-                      <span className="font-bold">{t({ en: 'Structured Address', ar: 'عنوان مفصل' })}</span>
-                      <span className="text-[10px] text-gray-500">{t({ en: 'Region, Street, Building, etc.', ar: 'المنطقة، الشارع، المبنى، إلخ.' })}</span>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {['instagram', 'twitter', 'facebook', 'whatsapp', 'snapchat', 'tiktok'].map((platform) => (
+                  <div key={platform} className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">
+                      {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={platform === 'whatsapp' ? 'e.g., 96812345678' : `https://${platform}.com/username`}
+                      value={appSettings.socialLinks?.[platform as keyof NonNullable<AppSettings['socialLinks']>] || ''}
+                      onChange={(e) => updateAppSettings({ 
+                        socialLinks: { 
+                          ...(appSettings.socialLinks || {}), 
+                          [platform]: e.target.value 
+                        } 
+                      })}
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                    />
                   </div>
-                  <button 
-                    onClick={() => {
-                      const modes = appSettings.supportedAddressModes || [];
-                      const newModes = modes.includes('normal') 
-                        ? modes.filter(m => m !== 'normal')
-                        : [...modes, 'normal'];
-                      if (newModes.length === 0) return alert('At least one address mode must be supported');
-                      updateAppSettings({ supportedAddressModes: newModes });
-                    }}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.supportedAddressModes?.includes('normal') ? 'bg-black' : 'bg-gray-300'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.supportedAddressModes?.includes('normal') ? 'right-1' : 'left-1'}`} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <MapIcon className="w-5 h-5" />
-                    <div className="flex flex-col">
-                      <span className="font-bold">{t({ en: 'Map Picker', ar: 'محدد الخريطة' })}</span>
-                      <span className="text-[10px] text-gray-500">{t({ en: 'Pin point on the map', ar: 'تحديد نقطة على الخريطة' })}</span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const modes = appSettings.supportedAddressModes || [];
-                      const newModes = modes.includes('map') 
-                        ? modes.filter(m => m !== 'map')
-                        : [...modes, 'map'];
-                      if (newModes.length === 0) return alert('At least one address mode must be supported');
-                      updateAppSettings({ supportedAddressModes: newModes });
-                    }}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.supportedAddressModes?.includes('map') ? 'bg-black' : 'bg-gray-300'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.supportedAddressModes?.includes('map') ? 'right-1' : 'left-1'}`} />
-                  </button>
-                </div>
+                ))}
               </div>
             </div>
 
+            {/* Payment Methods */}
             <div className="space-y-4 pt-8 border-t border-gray-100">
-              <h3 className="text-lg font-bold">{t({ en: 'Payment Methods', ar: 'طرق الدفع' })}</h3>
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Payment Methods', ar: 'طرق الدفع' })}
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                   <div className="flex items-center gap-3">
@@ -5906,6 +5969,8 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
+
+      {activeSubTab === 'pages' && <PageEditor />}
 
       {activeSubTab === 'regions' && <RegionsManagement />}
       {activeSubTab === 'delivery-methods' && <DeliveryMethodsManagement categories={categories} />}
@@ -6322,6 +6387,65 @@ const OrdersPage = () => {
   );
 };
 
+const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: string) => void }) => {
+  const { t, lang } = useContext(LanguageContext);
+  const [content, setContent] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPage = async () => {
+      try {
+        const docRef = doc(db, 'pages', pageId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const body = data.body || {};
+          // Fallback if current language doesn't have content but the other does
+          const pageContent = body[lang] || body[lang === 'en' ? 'ar' : 'en'];
+          setContent(pageContent);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, `pages/${pageId}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPage();
+  }, [pageId, lang]);
+
+  if (loading) return (
+    <div className="flex justify-center items-center py-32">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black"></div>
+    </div>
+  );
+
+  if (!content) {
+    if (pageId === 'home') {
+      return (
+        <div className="py-20 text-center px-6">
+          <h1 className="text-4xl font-black italic tracking-tighter uppercase mb-4">{t({ en: 'Welcome to Shop', ar: 'مرحبا بك في المتجر' })}</h1>
+          <p className="text-gray-400 mb-8 max-w-md mx-auto">{t({ en: 'The home page content is currently empty. Visit the admin panel to customize it.', ar: 'محتوى الصفحة الرئيسية فارغ حالياً. قم بزيارة لوحة التحكم لتخصيصها.' })}</p>
+          <button onClick={() => onNavigate?.('shop')} className="px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all">
+            {t({ en: 'Start Shopping', ar: 'ابدأ التسوق' })}
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="max-w-4xl mx-auto py-32 text-center px-6" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <h1 className="text-2xl md:text-4xl font-black mb-4 uppercase tracking-tighter italic">{t({ en: 'Page Not Published', ar: 'الصفحة غير منشورة' })}</h1>
+        <p className="text-gray-500 mb-8 font-medium">{t({ en: 'This page content has not been set up yet.', ar: 'لم يتم إعداد محتوى هذه الصفحة بعد.' })}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="puck-content" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <Render config={puckConfig} data={content} />
+    </div>
+  );
+};
+
 const FilterSidebar = ({ 
   categories, 
   brands, 
@@ -6659,6 +6783,7 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
   const [lang, setLangState] = useState<'en' | 'ar'>(() => {
     const saved = localStorage.getItem('kuzama_lang');
     return (saved === 'en' || saved === 'ar') ? saved : 'en';
@@ -6698,7 +6823,6 @@ export default function App() {
     try {
       const newSettings = { ...appSettings, ...settings };
       await setDoc(doc(db, 'settings', 'app'), newSettings);
-      alert('App settings saved!');
     } catch (error) {
       console.error('Error saving app settings:', error);
     }
@@ -6800,6 +6924,14 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Fetch Stores
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'stores'), where('isVerified', '==', true), orderBy('createdAt', 'desc')), (snap) => {
+      setStores(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Store)));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'stores'));
+    return unsub;
+  }, []);
+
   // Fetch App Settings
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
@@ -6851,6 +6983,8 @@ export default function App() {
     await signOut(auth);
     setCurrentPage('home');
   };
+
+  const dataLoading = loading || !products.length || !categories.length; // Basic loading heuristic
 
   // Notification Logic
   useEffect(() => {
@@ -6990,7 +7124,8 @@ export default function App() {
   return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>
       <SettingsContext.Provider value={{ appSettings, updateAppSettings }}>
-        <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
+        <DataContext.Provider value={{ products, categories, stores, tags, brands, loading: dataLoading }}>
+          <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
           {profile?.isBanned ? (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-center">
             <div className="max-w-md space-y-6">
@@ -7061,119 +7196,76 @@ export default function App() {
                       exit={{ opacity: 0, y: -20 }}
                     >
                       {currentPage === 'home' && (
+                        <div className="px-1 md:px-0">
+                          <PuckPage pageId="home" onNavigate={setCurrentPage} />
+
+                          {/* Featured Arrivals Section to bridge to Shop */}
+                          <div className="max-w-7xl mx-auto px-6 py-20">
+                             <div className="flex justify-between items-end mb-12">
+                                <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">{t({ en: 'Explore Shop', ar: 'استكشف المتجر' })}</h1>
+                                <button onClick={() => setCurrentPage('shop')} className="text-xs font-black text-gray-400 hover:text-black uppercase tracking-widest border-b-2 border-gray-100 pb-1">{t({ en: 'Visit Marketplace', ar: 'زيارة المتجر' })}</button>
+                             </div>
+                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-12">
+                                {products.slice(0, 4).map(product => (
+                                  <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
+                                ))}
+                             </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {currentPage === 'shop' && (
                         <div className="px-1 md:px-4">
                           {/* Search Bar Section */}
                           <div className="py-1 md:py-8 flex justify-center">
-                            <div className="relative w-full max-w-2xl">
-                              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-gray-400" />
-                              <input 
-                                type="text"
-                                placeholder={t({ en: 'Search products, brands...', ar: 'البحث عن المنتجات، الماركات...' })}
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full pl-10 md:pl-12 pr-4 py-2 md:py-5 bg-gray-50 rounded-xl md:rounded-[2rem] border-none focus:ring-2 focus:ring-black text-sm md:text-lg shadow-sm"
-                              />
+                            <div className="relative w-full max-w-2xl text-center">
+                              <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase mb-8">{t({ en: 'Browse Everything', ar: 'تصفح كل شيء' })}</h1>
+                              <div className="relative group">
+                                <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400 group-focus-within:text-black transition-colors" />
+                                <input 
+                                  type="text"
+                                  placeholder={t({ en: 'Search products, categories...', ar: 'ابحث عن منتجات، فئات...' })}
+                                  value={searchQuery}
+                                  onChange={(e) => setSearchQuery(e.target.value)}
+                                  className="w-full pl-16 pr-8 py-6 bg-white border border-gray-100 rounded-[2rem] shadow-xl focus:ring-4 focus:ring-black/5 transition-all outline-none text-lg font-medium"
+                                />
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => setShowFilterDrawer(true)}
+                              className="md:hidden ml-4 p-5 bg-black text-white rounded-2xl shadow-xl self-end mb-1"
+                            >
+                              <Filter className="w-6 h-6" />
+                            </button>
+                          </div>
+
+                          {/* Horizontal Categories */}
+                          <div className="py-8 md:py-12 overflow-hidden">
+                            <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-hide px-2 snap-x">
+                              <button 
+                                onClick={() => setSelectedCategoryId('')}
+                                className={`px-10 py-5 rounded-[1.5rem] transition-all whitespace-nowrap text-sm font-black uppercase tracking-widest shadow-xl snap-start ${
+                                  selectedCategoryId === '' ? 'bg-black text-white ring-8 ring-black/5' : 'bg-white text-gray-400 hover:bg-gray-50'
+                                }`}
+                              >
+                                {t({ en: 'All Items', ar: 'الكل' })}
+                              </button>
+                              {categories.map((cat) => (
+                                <button 
+                                  key={cat.id}
+                                  onClick={() => setSelectedCategoryId(cat.id)}
+                                  className={`px-10 py-5 rounded-[1.5rem] transition-all whitespace-nowrap text-sm font-black uppercase tracking-widest shadow-xl snap-start ${
+                                    selectedCategoryId === cat.id ? 'bg-black text-white ring-8 ring-black/5' : 'bg-white text-gray-400 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {t(cat.name)}
+                                </button>
+                              ))}
                             </div>
                           </div>
 
-                          {/* Promoted Tags (Banners) - Horizontal Carousel */}
-                          {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && tags.filter(t => t.isPromoted).length > 0 && (
-                            <div className="mb-4 md:mb-16 overflow-hidden">
-                              <div className="flex gap-3 md:gap-8 overflow-x-auto no-scrollbar pb-4 snap-x snap-mandatory px-1 md:px-0">
-                                {tags.filter(t => t.isPromoted).map(tag => (
-                                  <motion.div 
-                                    key={tag.id} 
-                                    className="relative h-40 md:h-80 min-w-[85vw] md:min-w-[600px] rounded-2xl md:rounded-[3rem] overflow-hidden group cursor-pointer shadow-xl flex-shrink-0 snap-center"
-                                    onClick={() => setSelectedTagId(tag.id)}
-                                    whileHover={{ scale: 1.01 }}
-                                    whileTap={{ scale: 0.98 }}
-                                  >
-                                    <img 
-                                      src={tag.bannerImage || undefined} 
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-4 md:p-12">
-                                      <div className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 bg-white/20 backdrop-blur-md px-3 py-1 md:px-4 md:py-2 rounded-full border border-white/20">
-                                        <span className="text-white text-[8px] md:text-[10px] font-black uppercase tracking-[0.2em]">Offers</span>
-                                      </div>
-                                      <div className="flex items-center gap-2 md:gap-4 mb-1 md:mb-4">
-                                        <div className="p-2 md:p-3 bg-white/20 backdrop-blur-md rounded-lg md:rounded-2xl">
-                                          <TagIcon className="w-4 h-4 md:w-8 md:h-8 text-white" />
-                                        </div>
-                                        <h3 className="text-white text-xl md:text-5xl font-black tracking-tighter uppercase italic">{t(tag.title)}</h3>
-                                      </div>
-                                      {tag.discountType !== 'none' && (
-                                        <div className="bg-white text-black px-3 py-1 md:px-6 md:py-2 rounded-full w-fit font-black text-xs md:text-xl shadow-lg">
-                                          {tag.discountType === 'product' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </motion.div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Public Tags Section */}
-                          {tags.filter(t => t.isPublic).length > 0 && (
-                            <div className="mb-4 md:mb-12 overflow-x-auto pb-1 md:pb-4 no-scrollbar">
-                              <div className="flex gap-1 md:gap-4">
-                                <button
-                                  onClick={() => setSelectedTagId('')}
-                                  className={`flex-shrink-0 flex items-center gap-1 md:gap-3 px-2.5 py-1.5 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
-                                    selectedTagId === '' 
-                                      ? 'bg-black text-white border-black shadow-lg' 
-                                      : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
-                                  }`}
-                                >
-                                  <span className="font-bold text-[9px] md:text-base whitespace-nowrap">{t({ en: 'All Offers', ar: 'جميع العروض' })}</span>
-                                </button>
-                                {tags.filter(t => t.isPublic).map(tag => (
-                                  <button
-                                    key={tag.id}
-                                    onClick={() => setSelectedTagId(tag.id)}
-                                    className={`flex-shrink-0 flex items-center gap-1 md:gap-3 px-2.5 py-1.5 md:px-6 md:py-4 rounded-xl md:rounded-3xl border transition-all ${
-                                      selectedTagId === tag.id 
-                                        ? 'bg-black text-white border-black shadow-lg scale-105' 
-                                        : 'bg-white text-gray-600 border-gray-100 hover:border-gray-300'
-                                    }`}
-                                  >
-                                    <TagIcon className="w-3 h-3 md:w-5 md:h-5" />
-                                    <span className="font-bold text-[9px] md:text-base whitespace-nowrap">{t(tag.title)}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Featured Categories */}
-                          {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
-                            <div className="mb-4 md:mb-16">
-                              <h2 className="text-base md:text-3xl font-black tracking-tight mb-3 md:mb-10">{t({ en: 'Featured Categories', ar: 'الفئات المميزة' })}</h2>
-                              <div className="space-y-4 md:space-y-16">
-                                {featuredCategories.map(cat => (
-                                  <div key={cat.id} className="space-y-2 md:space-y-4">
-                                    <div 
-                                      className="flex items-center gap-3 cursor-pointer group"
-                                      onClick={() => setSelectedCategoryId(cat.id)}
-                                    >
-                                      <div className="w-10 h-10 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-gray-100 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-colors">
-                                        {/* @ts-ignore */}
-                                        {React.createElement((LucideIcons as any)[cat.icon] || LucideIcons.Package, { className: "w-5 h-5 md:w-8 md:h-8" })}
-                                      </div>
-                                      <h3 className="text-lg md:text-3xl font-black tracking-tighter">{t(cat.locals.title)}</h3>
-                                    </div>
-                                    
-                                    {/* Products for this category */}
-                                    <CategoryProducts categoryId={cat.id} onSelectProduct={setSelectedProduct} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex gap-8">
+                          {/* Product Grid Area */}
+                          <div className="flex gap-12">
                             <FilterSidebar 
                               categories={categories}
                               brands={brands}
@@ -7188,44 +7280,53 @@ export default function App() {
                               setSelectedTagId={setSelectedTagId}
                             />
                             <div className="flex-1">
-                              <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-4">
-                                  <span className="text-sm text-gray-400 font-bold uppercase tracking-widest">
-                                    {t({ en: 'Showing', ar: 'عرض' })} {filteredProducts.length} {t({ en: 'results', ar: 'نتائج' })}
-                                  </span>
-                                  {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
-                                    <button 
-                                      onClick={() => {
-                                        setSelectedCategoryId('');
-                                        setSelectedBrand('');
-                                        setSelectedTagId('');
-                                        setSearchQuery('');
-                                        setPriceRange([0, 10000]);
-                                      }}
-                                      className="text-xs font-bold text-red-500 hover:underline flex items-center gap-1"
-                                    >
-                                      <X className="w-3 h-3" />
-                                      {t({ en: 'Clear Filters', ar: 'مسح الفلاتر' })}
-                                    </button>
-                                  )}
+                              {/* Promoted Tags (Banners) - Inside Shop */}
+                              {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && tags.filter(t => t.isPromoted).length > 0 && (
+                                <div className="mb-16 overflow-hidden">
+                                  <div className="flex gap-8 overflow-x-auto no-scrollbar pb-8 snap-x snap-mandatory">
+                                    {tags.filter(t => t.isPromoted).map(tag => (
+                                      <motion.div 
+                                        key={tag.id} 
+                                        className="relative h-96 min-w-[500px] md:min-w-[800px] rounded-[48px] overflow-hidden group cursor-pointer shadow-2xl flex-shrink-0 snap-center"
+                                        onClick={() => setSelectedTagId(tag.id)}
+                                      >
+                                        <img 
+                                          src={tag.bannerImage || undefined} 
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent flex flex-col justify-end p-12">
+                                          <h3 className="text-white text-6xl font-black tracking-tighter uppercase italic mb-4">{t(tag.title)}</h3>
+                                          {tag.discountType !== 'none' && (
+                                            <div className="bg-white text-black px-8 py-3 rounded-full w-fit font-black text-2xl shadow-2xl">
+                                              {tag.discountType === 'product' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </motion.div>
+                                    ))}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 md:hidden">
-                                  <button 
-                                    onClick={() => setShowFilterDrawer(true)}
-                                    className="p-4 bg-black text-white rounded-2xl flex items-center gap-2 shadow-xl"
-                                  >
-                                    <SlidersHorizontal className="w-5 h-5" />
-                                    <span className="text-xs font-bold uppercase">{t({ en: 'Filter', ar: 'تصفية' })}</span>
+                              )}
+
+                              <div className="flex items-center justify-between mb-8">
+                                <span className="text-xs text-gray-400 font-black uppercase tracking-[0.2em]">
+                                  {t({ en: 'Showing', ar: 'عرض' })} {filteredProducts.length} {t({ en: 'results', ar: 'نتائج' })}
+                                </span>
+                                {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
+                                  <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); setPriceRange([0, 10000]); }} className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
+                                    <X className="w-4 h-4" /> {t({ en: 'Reset', ar: 'إعادة تعيين' })}
                                   </button>
-                                </div>
+                                )}
                               </div>
+
                               {filteredProducts.length > 0 ? (
                                 <ProductGrid products={filteredProducts} onSelect={setSelectedProduct} />
                               ) : (
-                                <div className="py-32 text-center">
-                                  <Search className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                                  <h3 className="text-xl font-bold">{t({ en: 'No products found', ar: 'لم يتم العثور على منتجات' })}</h3>
-                                  <p className="text-gray-500">{t({ en: 'Try adjusting your filters or search query.', ar: 'حاول تعديل الفلاتر أو استعلام البحث.' })}</p>
+                                <div className="py-32 text-center bg-gray-50 rounded-[48px] border-2 border-dashed border-gray-200">
+                                  <Search className="w-16 h-16 text-gray-200 mx-auto mb-6" />
+                                  <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">{t({ en: 'No matching items', ar: 'لا توجد عناصر مطابقة' })}</h3>
+                                  <p className="text-gray-500 font-medium">{t({ en: 'Try adjusting your filters or search terms.', ar: 'حاول تعديل الفلاتر أو كلمات البحث.' })}</p>
                                 </div>
                               )}
                             </div>
@@ -7238,9 +7339,92 @@ export default function App() {
                       {currentPage === 'orders' && <OrdersPage />}
                       {currentPage === 'wishlist' && <WishlistPage onSelectProduct={setSelectedProduct} />}
                       {currentPage === 'profile' && <ProfilePage onNavigate={setCurrentPage} />}
+                      {currentPage === 'contact' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="contact" onNavigate={setCurrentPage} /></div>}
+                      {currentPage === 'policy' && <div className="max-w-4xl mx-auto px-6"><PuckPage pageId="policy" onNavigate={setCurrentPage} /></div>}
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* Simple Footer */}
+                {!['admin', 'cart', 'checkout'].includes(currentPage) && (
+                  <footer className="hidden md:block mt-20 border-t border-gray-100 py-12 px-6 bg-white overflow-hidden">
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xl italic"
+                            style={{ backgroundColor: config.theme.primary }}
+                          >
+                            {t(appSettings.appName).charAt(0)}
+                          </div>
+                          <span className="text-xl font-bold tracking-tight">{t(appSettings.appName)}</span>
+                        </div>
+                        <p className="text-sm text-gray-500 font-medium leading-relaxed max-w-xs">{t(appSettings.appDescription)}</p>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-6">{t({ en: 'Shop', ar: 'المتجر' })}</h4>
+                        <ul className="space-y-4">
+                          <li><button onClick={() => setCurrentPage('shop')} className="text-sm font-bold text-gray-600 hover:text-black">{t({ en: 'All Products', ar: 'جميع المنتجات' })}</button></li>
+                          <li><button onClick={() => setCurrentPage('orders')} className="text-sm font-bold text-gray-600 hover:text-black">{t({ en: 'My Orders', ar: 'طلباتي' })}</button></li>
+                          <li><button onClick={() => setCurrentPage('wishlist')} className="text-sm font-bold text-gray-600 hover:text-black">{t({ en: 'Wishlist', ar: 'الأمنيات' })}</button></li>
+                        </ul>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-6">{t({ en: 'Support', ar: 'الدعم' })}</h4>
+                        <ul className="space-y-4">
+                          <li><button onClick={() => setCurrentPage('contact')} className="text-sm font-bold text-gray-600 hover:text-black">{t({ en: 'Contact Support', ar: 'اتصل بنا' })}</button></li>
+                          <li><button onClick={() => setCurrentPage('policy')} className="text-sm font-bold text-gray-600 hover:text-black">{t({ en: 'Privacy Policy', ar: 'سياسة الخصوصية' })}</button></li>
+                        </ul>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-6">{t({ en: 'Connect', ar: 'تواصل' })}</h4>
+                        <div className="flex flex-wrap gap-4">
+                          {appSettings.socialLinks?.instagram && (
+                            <a href={appSettings.socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.Instagram className="w-5 h-5" />
+                            </a>
+                          )}
+                          {appSettings.socialLinks?.twitter && (
+                            <a href={appSettings.socialLinks.twitter} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.Twitter className="w-5 h-5" />
+                            </a>
+                          )}
+                          {appSettings.socialLinks?.facebook && (
+                            <a href={appSettings.socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.Facebook className="w-5 h-5" />
+                            </a>
+                          )}
+                          {appSettings.socialLinks?.whatsapp && (
+                            <a href={`https://wa.me/${appSettings.socialLinks.whatsapp}`} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.MessageCircle className="w-5 h-5" />
+                            </a>
+                          )}
+                          {appSettings.socialLinks?.tiktok && (
+                            <a href={appSettings.socialLinks.tiktok} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.Video className="w-5 h-5" />
+                            </a>
+                          )}
+                          {appSettings.socialLinks?.snapchat && (
+                            <a href={appSettings.socialLinks.snapchat} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center hover:bg-black hover:text-white transition-all">
+                              <LucideIcons.Ghost className="w-5 h-5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="max-w-7xl mx-auto mt-12 pt-8 border-t border-gray-50 flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">© 2024 {t(appSettings.appName)}. ALL RIGHTS RESERVED.</p>
+                      <div className="flex gap-6">
+                        <button onClick={() => setCurrentPage('policy')} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black">{t({ en: 'Terms', ar: 'الشروط' })}</button>
+                        <button onClick={() => setCurrentPage('policy')} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black">{t({ en: 'Privacy', ar: 'الخصوصية' })}</button>
+                      </div>
+                    </div>
+                  </footer>
+                )}
               </main>
               <BottomNav currentPage={currentPage} onNavigate={setCurrentPage} />
               <AnimatePresence>
@@ -7270,7 +7454,8 @@ export default function App() {
         </NotificationContext.Provider>
         )}
       </AuthContext.Provider>
-    </SettingsContext.Provider>
-  </LanguageContext.Provider>
+    </DataContext.Provider>
+  </SettingsContext.Provider>
+</LanguageContext.Provider>
   );
 }
