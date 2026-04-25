@@ -22,63 +22,14 @@ import {
   setDoc, 
   updateDoc,
   deleteDoc,
+  writeBatch,
   where,
   serverTimestamp,
   limit
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod } from './types';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
+import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod, AddressDetails } from './types';
+import { handleFirestoreError, OperationType } from './lib/error';
 import { config } from './lib/config';
 import * as LucideIcons from 'lucide-react';
 import { 
@@ -132,7 +83,10 @@ import {
   Leaf,
   Sprout,
   Sparkles,
-  Cookie
+  Cookie,
+  Building2,
+  Info,
+  Map as MapIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
@@ -151,15 +105,159 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 import { uploadImage, STORAGE_PATHS } from './lib/storage';
-import { useRegions } from './hooks/useRegions';
-import { useDeliveryMethods } from './hooks/useDeliveryMethods';
 
 // --- Contexts ---
+interface RegionsContextType {
+  regions: Region[];
+  loading: boolean;
+  addRegion: (region: Omit<Region, 'id' | 'createdAt'>) => Promise<void>;
+  updateRegion: (id: string, data: Partial<Region>) => Promise<void>;
+  deleteRegion: (id: string) => Promise<void>;
+}
+
+const RegionsContext = createContext<RegionsContextType>({
+  regions: [],
+  loading: true,
+  addRegion: async () => {},
+  updateRegion: async () => {},
+  deleteRegion: async () => {}
+});
+
+const RegionsProvider = ({ children }: { children: React.ReactNode }) => {
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'regions'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Region));
+      setRegions(data);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching regions:', error);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const addRegion = async (region: Omit<Region, 'id' | 'createdAt'>) => {
+    await addDoc(collection(db, 'regions'), {
+      ...region,
+      createdAt: serverTimestamp()
+    });
+  };
+
+  const updateRegion = async (id: string, data: Partial<Region>) => {
+    await updateDoc(doc(db, 'regions', id), data);
+  };
+
+  const deleteRegion = async (id: string) => {
+    await deleteDoc(doc(db, 'regions', id));
+  };
+
+  return (
+    <RegionsContext.Provider value={{ regions, loading, addRegion, updateRegion, deleteRegion }}>
+      {children}
+    </RegionsContext.Provider>
+  );
+};
+
+export const useRegions = () => useContext(RegionsContext);
+
+interface DeliveryMethodsContextType {
+  deliveryMethods: DeliveryMethod[];
+  loading: boolean;
+  addDeliveryMethod: (method: Omit<DeliveryMethod, 'id' | 'createdAt'>) => Promise<void>;
+  updateDeliveryMethod: (id: string, data: Partial<DeliveryMethod>) => Promise<void>;
+  deleteDeliveryMethod: (id: string) => Promise<void>;
+  setDefaultMethod: (id: string) => Promise<void>;
+}
+
+const DeliveryMethodsContext = createContext<DeliveryMethodsContextType>({
+  deliveryMethods: [],
+  loading: true,
+  addDeliveryMethod: async () => {},
+  updateDeliveryMethod: async () => {},
+  deleteDeliveryMethod: async () => {},
+  setDefaultMethod: async () => {}
+});
+
+const DeliveryMethodsProvider = ({ children }: { children: React.ReactNode }) => {
+  const [deliveryMethods, setDeliveryMethods] = useState<DeliveryMethod[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'deliveryMethods'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DeliveryMethod));
+      setDeliveryMethods(data);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error fetching delivery methods:', error);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const addDeliveryMethod = async (method: Omit<DeliveryMethod, 'id' | 'createdAt'>) => {
+    await addDoc(collection(db, 'deliveryMethods'), {
+      ...method,
+      createdAt: serverTimestamp()
+    });
+  };
+
+  const updateDeliveryMethod = async (id: string, data: Partial<DeliveryMethod>) => {
+    await updateDoc(doc(db, 'deliveryMethods', id), data);
+  };
+
+  const deleteDeliveryMethod = async (id: string) => {
+    await deleteDoc(doc(db, 'deliveryMethods', id));
+  };
+
+  const setDefaultMethod = async (id: string) => {
+    const batch = writeBatch(db);
+    const snapshot = await getDocs(collection(db, 'deliveryMethods'));
+    snapshot.docs.forEach(d => {
+      batch.update(d.ref, { isDefault: d.id === id });
+    });
+    await batch.commit();
+  };
+
+  return (
+    <DeliveryMethodsContext.Provider value={{ 
+      deliveryMethods, 
+      loading, 
+      addDeliveryMethod, 
+      updateDeliveryMethod, 
+      deleteDeliveryMethod,
+      setDefaultMethod
+    }}>
+      {children}
+    </DeliveryMethodsContext.Provider>
+  );
+};
+
+export const useDeliveryMethods = () => useContext(DeliveryMethodsContext);
+
 const LanguageContext = createContext<{
   lang: 'en' | 'ar';
   setLang: (l: 'en' | 'ar') => void;
   t: (ls: LocalizedString | string | any) => string;
 }>({ lang: 'en', setLang: () => {}, t: (ls) => typeof ls === 'string' ? ls : (ls?.en || '') });
+
+const SettingsContext = createContext<{
+  appSettings: AppSettings;
+  updateAppSettings: (settings: Partial<AppSettings>) => Promise<void>;
+}>({
+  appSettings: { 
+    paymentMethods: { online: true, cod: true }, 
+    restrictDeliveryToRegions: false,
+    supportedAddressModes: ['normal', 'map'],
+    appName: config.name,
+    appDescription: config.description
+  },
+  updateAppSettings: async () => {}
+});
 
 const CartContext = createContext<{
   cart: CartItem[];
@@ -371,6 +469,7 @@ const NotificationCenter = ({ onClose }: { onClose: () => void }) => {
 
 const WelcomeModal = ({ onClose }: { onClose: () => void }) => {
   const { t, lang } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const { location, setLocation } = useContext(LocationContext);
   const [step, setStep] = useState(1);
   const [tempLocation, setTempLocation] = useState<{ lat: number; lng: number } | null>(location || config.map.defaultCenter);
@@ -466,7 +565,7 @@ const WelcomeModal = ({ onClose }: { onClose: () => void }) => {
                   transition={{ delay: 0.4 }}
                   className="text-6xl font-black tracking-tighter leading-none bg-clip-text text-transparent bg-gradient-to-b from-black to-gray-600"
                 >
-                  {t({ en: 'KUZAMA', ar: 'خوزاما' })}
+                  {t(appSettings.appName)}
                 </motion.h2>
                 
                 <motion.p 
@@ -475,10 +574,7 @@ const WelcomeModal = ({ onClose }: { onClose: () => void }) => {
                   transition={{ delay: 0.5 }}
                   className="text-gray-400 text-xl max-w-xs mx-auto font-medium leading-relaxed"
                 >
-                  {t({ 
-                    en: 'Experience the future of local grocery shopping.', 
-                    ar: 'اختبر مستقبل تسوق البقالة المحلية.' 
-                  })}
+                  {t(appSettings.appDescription)}
                 </motion.p>
               </div>
 
@@ -657,6 +753,7 @@ export const useDeliveryCost = () => {
 
 const Navbar = ({ onNavigate, currentPage }: { onNavigate: (page: string) => void, currentPage: string }) => {
   const { user, profile, signIn, logout } = useContext(AuthContext);
+  const { appSettings } = useContext(SettingsContext);
   const { cart } = useContext(CartContext);
   const { lang, setLang, t } = useContext(LanguageContext);
   const { unreadCount } = useContext(NotificationContext);
@@ -672,9 +769,9 @@ const Navbar = ({ onNavigate, currentPage }: { onNavigate: (page: string) => voi
           className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xl italic"
           style={{ backgroundColor: config.theme.primary }}
         >
-          {t(config.name).charAt(0)}
+          {t(appSettings.appName).charAt(0)}
         </div>
-        <span className="text-xl font-bold tracking-tight">{t(config.name)}</span>
+        <span className="text-xl font-bold tracking-tight">{t(appSettings.appName)}</span>
       </div>
 
       <div className="hidden md:flex items-center gap-6">
@@ -1362,24 +1459,63 @@ const AddressDrawer = ({
   onSave, 
   initialAddress, 
   initialCoords, 
+  initialMode = 'map',
+  initialDetails,
   t 
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
-  onSave: (address: string, coords: { lat: number, lng: number } | null) => void,
+  onSave: (address: string, coords: { lat: number, lng: number } | null, mode: 'normal' | 'map', details?: AddressDetails) => void,
   initialAddress: string,
   initialCoords: { lat: number, lng: number } | null,
+  initialMode?: 'normal' | 'map',
+  initialDetails?: AddressDetails,
   t: (ls: any) => string
 }) => {
+  const { appSettings } = useContext(SettingsContext);
+  const supportedModes = appSettings.supportedAddressModes || ['normal', 'map'];
+  const [mode, setMode] = useState<'normal' | 'map'>(initialMode);
   const [address, setAddress] = useState(initialAddress);
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(initialCoords);
+  const { regions } = useRegions();
+
+  const [details, setDetails] = useState<AddressDetails>(initialDetails || {
+    regionId: '',
+    streetName: '',
+    buildingNumber: '',
+    floorNumber: '',
+    apartmentNumber: '',
+    additionalInstructions: ''
+  });
 
   useEffect(() => {
     if (isOpen) {
       setAddress(initialAddress);
       setCoords(initialCoords);
+      // Ensure initial mode is supported, else pick first available
+      if (!supportedModes.includes(initialMode as any)) {
+        setMode(supportedModes[0] as any);
+      } else {
+        setMode(initialMode);
+      }
+      if (initialDetails) setDetails(initialDetails);
     }
-  }, [isOpen, initialAddress, initialCoords]);
+  }, [isOpen, initialAddress, initialCoords, initialMode, initialDetails, supportedModes]);
+
+  // Update string address when details change in normal mode
+  useEffect(() => {
+    if (mode === 'normal') {
+      const regionName = regions.find(r => r.id === details.regionId)?.name || '';
+      const parts = [
+        regionName,
+        details.streetName ? `${t({ en: 'Street', ar: 'شارع' })}: ${details.streetName}` : '',
+        details.buildingNumber ? `${t({ en: 'Building', ar: 'بناية' })}: ${details.buildingNumber}` : '',
+        details.floorNumber ? `${t({ en: 'Floor', ar: 'طابق' })}: ${details.floorNumber}` : '',
+        details.apartmentNumber ? `${t({ en: 'Apartment', ar: 'شقة' })}: ${details.apartmentNumber}` : '',
+      ].filter(Boolean);
+      setAddress(parts.join(', '));
+    }
+  }, [details, mode, regions, t]);
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
@@ -1421,71 +1557,213 @@ const AddressDrawer = ({
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            className="relative bg-white w-full max-w-2xl h-[85vh] sm:h-[80vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col"
+            className="relative bg-white w-full max-w-2xl h-[85vh] sm:h-[90vh] rounded-t-[40px] sm:rounded-[40px] shadow-2xl overflow-hidden flex flex-col"
           >
-            {/* Full Map Background */}
-            <div className="absolute inset-0 z-0">
-              <MapPicker 
-                t={t}
-                className="h-full"
-                initialCoords={coords} 
-                onLocationSelect={(lat, lng) => {
-                  setCoords({ lat, lng });
-                  reverseGeocode(lat, lng);
-                }} 
-              />
+            {/* Header / Mode Switcher */}
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between z-20 bg-white">
+              <div className="flex bg-gray-100 p-1 rounded-2xl">
+                {supportedModes.includes('map') && (
+                  <button 
+                    onClick={() => setMode('map')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      mode === 'map' ? 'bg-white shadow-sm text-black' : 'text-gray-500'
+                    }`}
+                  >
+                    <MapIcon className="w-4 h-4" />
+                    {t({ en: 'Map Picker', ar: 'تحديد من الخريطة' })}
+                  </button>
+                )}
+                {supportedModes.includes('normal') && (
+                  <button 
+                    onClick={() => setMode('normal')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      mode === 'normal' ? 'bg-white shadow-sm text-black' : 'text-gray-500'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4" />
+                    {t({ en: 'Normal Address', ar: 'عنوان عادي' })}
+                  </button>
+                )}
+              </div>
+              <button 
+                onClick={onClose}
+                className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Floating Close Button */}
-            <button 
-              onClick={onClose}
-              className="absolute top-6 right-6 z-10 p-3 bg-white/90 backdrop-blur-md rounded-full shadow-xl hover:bg-white transition-all border border-white/20"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
-            {/* Floating Location Button */}
-            <button 
-              onClick={getCurrentLocation}
-              className="absolute top-6 left-6 z-10 p-3 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl hover:bg-white transition-all border border-white/20 flex items-center gap-2 group"
-            >
-              <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                <MapPin className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-bold text-gray-900 pr-2">{t({ en: 'Current Location', ar: 'موقعي الحالي' })}</span>
-            </button>
-
-            {/* Floating Address Card */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 z-10">
-              <div className="bg-white/95 backdrop-blur-xl rounded-2xl md:rounded-[32px] p-4 md:p-6 shadow-2xl border border-white/20 space-y-3 md:space-y-4">
-                <div className="space-y-1 md:space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400">{t({ en: 'Delivery Address', ar: 'عنوان التوصيل' })}</label>
-                    {coords && (
-                      <span className="text-[8px] md:text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                        {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-                      </span>
-                    )}
+            <div className="flex-1 relative overflow-y-auto">
+              {mode === 'map' ? (
+                <>
+                  {/* Full Map */}
+                  <div className="absolute inset-0 z-0">
+                    <MapPicker 
+                      t={t}
+                      className="h-full"
+                      initialCoords={coords} 
+                      onLocationSelect={(lat, lng) => {
+                        setCoords({ lat, lng });
+                        reverseGeocode(lat, lng);
+                      }} 
+                    />
                   </div>
-                  <textarea 
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder={t({ en: 'Tap map to select or enter address...', ar: 'اضغط على الخريطة أو أدخل العنوان...' })}
-                    className="w-full p-3 md:p-4 bg-gray-50/50 rounded-xl md:rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black min-h-[60px] md:min-h-[80px] text-xs md:text-sm resize-none"
-                  />
-                </div>
 
-                <button 
-                  onClick={() => {
-                    onSave(address, coords);
-                    onClose();
-                  }}
-                  className="w-full py-3 md:py-4 bg-black text-white rounded-xl md:rounded-2xl font-bold hover:bg-gray-900 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2 group text-sm md:text-base"
-                >
-                  <span>{t({ en: 'Confirm Delivery Location', ar: 'تأكيد موقع التوصيل' })}</span>
-                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
+                  {/* Floating Location Button */}
+                  <button 
+                    onClick={getCurrentLocation}
+                    className="absolute top-6 left-6 z-10 p-3 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl hover:bg-white transition-all border border-white/20 flex items-center gap-2 group"
+                  >
+                    <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 pr-2">{t({ en: 'Current Location', ar: 'موقعي الحالي' })}</span>
+                  </button>
+
+                  <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+                    <div className="bg-white/95 backdrop-blur-xl rounded-2xl md:rounded-[32px] p-4 md:p-6 shadow-2xl border border-white/20 space-y-3 md:space-y-4">
+                      <div className="space-y-1 md:space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400">{t({ en: 'Selected Address', ar: 'العنوان المختار' })}</label>
+                          {coords && (
+                            <span className="text-[8px] md:text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                              {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
+                            </span>
+                          )}
+                        </div>
+                        <textarea 
+                          value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          placeholder={t({ en: 'Tap map to select or enter address...', ar: 'اضغط على الخريطة أو أدخل العنوان...' })}
+                          className="w-full p-3 md:p-4 bg-gray-50/50 rounded-xl md:rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black min-h-[60px] md:min-h-[80px] text-xs md:text-sm resize-none"
+                        />
+                      </div>
+                      
+                      {coords && (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                          <MapIcon className="w-4 h-4 text-emerald-600" />
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold text-emerald-900 leading-none">
+                              {getRegionForPoint(coords, regions)?.name || t({ en: 'Outside Delivery Zones', ar: 'خارج مناطق التوصيل' })}
+                            </p>
+                            <p className="text-[8px] text-emerald-600 mt-1 uppercase font-black tracking-widest">{t({ en: 'Detected Region', ar: 'المنطقة المكتشفة' })}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <button 
+                        onClick={() => {
+                          const detectedRegion = coords ? getRegionForPoint(coords, regions) : null;
+                          const finalDetails = detectedRegion ? { ...details, regionId: detectedRegion.id } : details;
+                          onSave(address, coords, 'map', finalDetails);
+                          onClose();
+                        }}
+                        className="w-full py-3 md:py-4 bg-black text-white rounded-xl md:rounded-2xl font-bold hover:bg-gray-900 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2 group text-sm md:text-base"
+                      >
+                        <span>{t({ en: 'Confirm Map Location', ar: 'تأكيد موقع الخريطة' })}</span>
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="p-6 space-y-6">
+                  {/* Normal Address Form */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Region', ar: 'المنطقة' })}</label>
+                      <select 
+                        value={details.regionId}
+                        onChange={(e) => setDetails({ ...details, regionId: e.target.value })}
+                        className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                      >
+                        <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
+                        {regions.map(region => (
+                          <option key={region.id} value={region.id}>{region.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Street Name', ar: 'اسم الشارع' })}</label>
+                        <input 
+                          type="text" 
+                          value={details.streetName}
+                          onChange={(e) => setDetails({ ...details, streetName: e.target.value })}
+                          placeholder={t({ en: 'e.g. Al Khalidiyah St', ar: 'مثلاً شارع الخالدية' })}
+                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Building Number', ar: 'رقم البناية' })}</label>
+                        <input 
+                          type="text" 
+                          value={details.buildingNumber}
+                          onChange={(e) => setDetails({ ...details, buildingNumber: e.target.value })}
+                          placeholder={t({ en: 'e.g. 12', ar: 'مثلاً 12' })}
+                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Floor Number', ar: 'رقم الطابق' })}</label>
+                        <input 
+                          type="text" 
+                          value={details.floorNumber}
+                          onChange={(e) => setDetails({ ...details, floorNumber: e.target.value })}
+                          placeholder={t({ en: 'e.g. 3', ar: 'مثلاً 3' })}
+                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Apartment Number', ar: 'رقم الشقة' })}</label>
+                        <input 
+                          type="text" 
+                          value={details.apartmentNumber}
+                          onChange={(e) => setDetails({ ...details, apartmentNumber: e.target.value })}
+                          placeholder={t({ en: 'e.g. 304', ar: 'مثلاً 304' })}
+                          className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Additional Instructions (Optional)', ar: 'تعليمات إضافية (اختياري)' })}</label>
+                      <textarea 
+                        value={details.additionalInstructions}
+                        onChange={(e) => setDetails({ ...details, additionalInstructions: e.target.value })}
+                        placeholder={t({ en: 'Near the supermarket, etc...', ar: 'بجانب السوبر ماركت، الخ...' })}
+                        className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none resize-none min-h-[80px]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-emerald-50 rounded-3xl flex gap-3 items-start">
+                    <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-200">
+                      <Info className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-900">{t({ en: 'Address Preview', ar: 'معاينة العنوان' })}</p>
+                      <p className="text-[11px] text-emerald-700 leading-relaxed mt-1">{address || t({ en: 'Please fill details to generate address...', ar: 'يرجى تعبئة التفاصيل لإنشاء العنوان...' })}</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      if (!details.regionId) return alert(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
+                      onSave(address, null, 'normal', details);
+                      onClose();
+                    }}
+                    className="w-full py-4 bg-black text-white rounded-3xl font-bold hover:bg-gray-900 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2 group text-base"
+                  >
+                    <span>{t({ en: 'Save Address Details', ar: 'حفظ تفاصيل العنوان' })}</span>
+                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>
@@ -1494,30 +1772,56 @@ const AddressDrawer = ({
   );
 };
 
+const cleanObject = (obj: any) => {
+  if (!obj || typeof obj !== 'object' || obj instanceof Date) return obj;
+  if (Array.isArray(obj)) return obj.map(item => cleanObject(item));
+  
+  const newObj: any = {};
+  Object.keys(obj).forEach(key => {
+    const val = obj[key];
+    if (val === undefined) {
+      newObj[key] = null;
+    } else if (val && typeof val === 'object' && val.constructor === Object) {
+      newObj[key] = cleanObject(val);
+    } else {
+      newObj[key] = val;
+    }
+  });
+  return newObj;
+};
+
 const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void }) => {
   const { cart, total, clearCart } = useContext(CartContext);
   const { user, profile } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const { location: savedLocation, address: savedAddress } = useContext(LocationContext);
   const [loading, setLoading] = useState(false);
   const [address, setAddress] = useState(savedAddress || profile?.address || '');
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(savedLocation || profile?.defaultLocation || null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [addressMode, setAddressMode] = useState<'normal' | 'map'>(profile?.addressMode || 'map');
+  const [addressDetails, setAddressDetails] = useState<AddressDetails | undefined>(profile?.addressDetails);
   const [isAddressDrawerOpen, setIsAddressDrawerOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
+  const { deliveryMethods, addDeliveryMethod, updateDeliveryMethod, deleteDeliveryMethod, setDefaultMethod } = useDeliveryMethods();
+  const { regions } = useRegions();
+
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
-      if (snap.exists()) {
-        const settings = snap.data() as AppSettings;
-        setAppSettings(settings);
-        if (!settings.paymentMethods.online && settings.paymentMethods.cod) {
-          setPaymentMethod('cod');
-        }
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/app'));
-    return unsub;
-  }, []);
+    if (profile) {
+      if (!savedAddress && profile.address) setAddress(profile.address);
+      if (!savedLocation && profile.defaultLocation) setCoords(profile.defaultLocation);
+      setAddressMode(profile.addressMode || 'map');
+      setAddressDetails(profile.addressDetails);
+    }
+  }, [profile, savedAddress, savedLocation]);
+
+  useEffect(() => {
+    if (!appSettings.paymentMethods.online && appSettings.paymentMethods.cod) {
+      setPaymentMethod('cod');
+    }
+  }, [appSettings.paymentMethods.online, appSettings.paymentMethods.cod]);
 
   const getCurrentLocation = () => {
     if (navigator.geolocation) {
@@ -1525,10 +1829,9 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         const { latitude, longitude } = pos.coords;
         setCoords({ lat: latitude, lng: longitude });
         reverseGeocode(latitude, longitude);
-        alert(t({ en: 'Location captured!', ar: 'تم تحديد الموقع!' }));
       }, (err) => {
         console.error(err);
-        alert(t({ en: 'Could not get location', ar: 'تعذر الحصول على الموقع' }));
+        setCheckoutError(t({ en: 'Could not get location. Please enable location permissions.', ar: 'تعذر الحصول على الموقع. يرجى تفعيل أذونات الموقع.' }));
       });
     }
   };
@@ -1545,14 +1848,54 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
     }
   };
 
+  const [selectedRegionId, setSelectedRegionId] = useState(addressDetails?.regionId || '');
+
+  useEffect(() => {
+    if (addressDetails?.regionId) {
+      setSelectedRegionId(addressDetails.regionId);
+    } else if (coords && appSettings.restrictDeliveryToRegions) {
+      const region = getRegionForPoint(coords, regions);
+      if (region) setSelectedRegionId(region.id);
+    }
+  }, [addressDetails, coords, regions, appSettings.restrictDeliveryToRegions]);
+
   const handlePayment = async () => {
-    if (!user) return alert(t({ en: 'Please sign in to checkout', ar: 'يرجى تسجيل الدخول لإتمام الشراء' }));
-    if (!address) return alert(t({ en: 'Please provide a shipping address', ar: 'يرجى تقديم عنوان الشحن' }));
+    setCheckoutError(null);
+    if (!user) {
+      setCheckoutError(t({ en: 'Please sign in to checkout', ar: 'يرجى تسجيل الدخول لإتمام الشراء' }));
+      return;
+    }
+    if (!selectedRegionId) {
+      setCheckoutError(t({ en: 'Please select a delivery region', ar: 'يرجى اختيار منطقة التوصيل' }));
+      return;
+    }
+    if (!address) {
+      setCheckoutError(t({ en: 'Please provide a shipping address', ar: 'يرجى تقديم عنوان الشحن' }));
+      return;
+    }
+
+    if (appSettings.restrictDeliveryToRegions) {
+      const region = regions.find(r => r.id === selectedRegionId);
+      if (!region) {
+        setCheckoutError(t({ en: 'Invalid region selected', ar: 'المنطقة المختارة غير صالحة' }));
+        return;
+      }
+      
+      // If we have coords and restriction is on, check if coords match the selected region
+      if (coords) {
+        const detectedRegion = getRegionForPoint(coords, regions);
+        if (detectedRegion && detectedRegion.id !== selectedRegionId) {
+          // Warning or restriction? Let's be strict if they selected a specific point
+          // But user wants to "not complicate", so maybe we trust the selected region more
+          // or just ensure a region is selected.
+        }
+      }
+    }
 
     setLoading(true);
     try {
       // 1. Create Order in Firestore
-      const orderData = {
+      const orderData = cleanObject({
         userId: user.uid,
         items: cart.map(item => ({
           id: item.id,
@@ -1568,9 +1911,12 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
           name: user?.displayName || '',
           email: user?.email || '',
           address: address,
-          destinationCoords: coords || undefined
+          addressMode,
+          addressDetails: addressDetails || null,
+          destinationCoords: coords || null,
+          regionId: selectedRegionId || null
         }
-      };
+      });
       const orderRef = await addDoc(collection(db, 'orders'), orderData);
       
       if (paymentMethod === 'cod') {
@@ -1596,11 +1942,16 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       if (data.IsSuccess) {
         window.location.href = data.Data.PaymentURL;
       } else {
-        throw new Error(data.Message || 'Payment initiation failed');
+        const validationError = data.ValidationErrors?.[0]?.Error || data.ValidationErrors?.[0]?.Message;
+        const errorMessage = data.Message || validationError || 'Payment initiation failed';
+        throw new Error(errorMessage);
       }
     } catch (error: any) {
       console.error(error);
-      alert('Checkout failed: ' + error.message);
+      setCheckoutError(t({ 
+        en: `Checkout failed: ${error.message}`, 
+        ar: `فشلت عملية الشراء: ${error.message}` 
+      }));
     } finally {
       setLoading(false);
     }
@@ -1609,6 +1960,30 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
   return (
     <div className="max-w-2xl mx-auto p-1 md:p-4">
       <h1 className="text-xl md:text-4xl font-bold mb-4 md:mb-12">{t({ en: 'Checkout', ar: 'إتمام الشراء' })}</h1>
+      
+      <AnimatePresence>
+        {checkoutError && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-red-900">{t({ en: 'Order Error', ar: 'خطأ في الطلب' })}</h4>
+              <p className="text-xs text-red-700 mt-1">{checkoutError}</p>
+            </div>
+            <button 
+              onClick={() => setCheckoutError(null)}
+              className="text-red-400 hover:text-red-500 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-3 md:space-y-6">
         <div className="bg-white border border-gray-100 rounded-xl md:rounded-2xl p-3 md:p-6 shadow-sm">
           <h3 className="font-bold text-sm md:text-lg mb-2 md:mb-4">{t({ en: 'Shipping Information', ar: 'معلومات الشحن' })}</h3>
@@ -1616,6 +1991,19 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
             <div>
               <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Full Name', ar: 'الاسم الكامل' })}</label>
               <div className="p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm">{user?.displayName}</div>
+            </div>
+            <div>
+              <label className="text-[9px] font-bold uppercase text-gray-400 mb-0.5 md:mb-1 block">{t({ en: 'Delivery Region', ar: 'منطقة التوصيل' })}</label>
+              <select 
+                value={selectedRegionId}
+                onChange={(e) => setSelectedRegionId(e.target.value)}
+                className="w-full p-2 md:p-3 bg-gray-50 rounded-lg md:rounded-xl text-gray-600 text-xs md:text-sm border-none focus:ring-2 focus:ring-emerald-500 outline-none"
+              >
+                <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
+                {regions.map(region => (
+                  <option key={region.id} value={region.id}>{region.name}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2 md:space-y-4">
               <div className="flex justify-between items-center mb-0.5 md:mb-1">
@@ -1646,10 +2034,20 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
                 onClose={() => setIsAddressDrawerOpen(false)}
                 initialAddress={address}
                 initialCoords={coords}
+                initialMode={addressMode}
+                initialDetails={addressDetails}
                 t={t}
-                onSave={(newAddress, newCoords) => {
+                onSave={(newAddress, newCoords, mode, details) => {
                   setAddress(newAddress);
                   setCoords(newCoords);
+                  setAddressMode(mode);
+                  setAddressDetails(details);
+                  if (details?.regionId) {
+                    setSelectedRegionId(details.regionId);
+                  } else if (newCoords) {
+                    const region = getRegionForPoint(newCoords, regions);
+                    if (region) setSelectedRegionId(region.id);
+                  }
                 }}
               />
             </div>
@@ -1719,6 +2117,7 @@ let recaptchaVerifier: RecaptchaVerifier | null = null;
 const PhoneLogin = () => {
   const { signIn, signInWithPhone, verifyCode } = useContext(AuthContext);
   const { t, lang } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [phoneNumber, setPhoneNumber] = useState(config.auth.defaultCountryCode);
   const [verificationCode, setVerificationCode] = useState('');
   const [step, setStep] = useState<'phone' | 'code'>('phone');
@@ -1803,10 +2202,10 @@ const PhoneLogin = () => {
           className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl italic mx-auto mb-4"
           style={{ backgroundColor: config.theme.primary }}
         >
-          {t(config.name).charAt(0)}
+          {t(appSettings.appName).charAt(0)}
         </div>
         <h2 className="text-2xl font-bold">{t({ en: 'Sign In', ar: 'تسجيل الدخول' })}</h2>
-        <p className="text-gray-400 text-sm mt-2">{t(config.description)}</p>
+        <p className="text-gray-400 text-sm mt-2">{t(appSettings.appDescription)}</p>
       </div>
 
       <div id="recaptcha-container" className="flex justify-center mb-6 overflow-hidden rounded-xl"></div>
@@ -1882,18 +2281,33 @@ const PhoneLogin = () => {
 const DefaultAddressSection = ({ profile, t }: { profile: UserProfile, t: (ls: any) => string }) => {
   const [address, setAddress] = useState(profile.address || '');
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(profile.defaultLocation || null);
+  const [addressMode, setAddressMode] = useState<'normal' | 'map'>(profile.addressMode || 'map');
+  const [addressDetails, setAddressDetails] = useState<AddressDetails | undefined>(profile.addressDetails);
   const [loading, setLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const handleSave = async (newAddress: string, newCoords: { lat: number, lng: number } | null) => {
+  useEffect(() => {
+    if (profile) {
+      setAddress(profile.address || '');
+      setCoords(profile.defaultLocation || null);
+      setAddressMode(profile.addressMode || 'map');
+      setAddressDetails(profile.addressDetails);
+    }
+  }, [profile]);
+
+  const handleSave = async (newAddress: string, newCoords: { lat: number, lng: number } | null, mode: 'normal' | 'map', details?: AddressDetails) => {
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', profile.uid), {
+      await updateDoc(doc(db, 'users', profile.uid), cleanObject({
         address: newAddress,
-        defaultLocation: newCoords
-      });
+        defaultLocation: newCoords,
+        addressMode: mode,
+        addressDetails: details || null
+      }));
       setAddress(newAddress);
       setCoords(newCoords);
+      setAddressMode(mode);
+      setAddressDetails(details);
       alert(t({ en: 'Default address saved!', ar: 'تم حفظ العنوان الافتراضي!' }));
     } catch (error) {
       console.error(error);
@@ -1920,12 +2334,20 @@ const DefaultAddressSection = ({ profile, t }: { profile: UserProfile, t: (ls: a
         <p className="text-sm text-gray-600 leading-relaxed">
           {address || t({ en: 'No default address set', ar: 'لم يتم تعيين عنوان افتراضي' })}
         </p>
-        {coords && (
-          <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-bold">
-            <CheckCircle2 className="w-3 h-3" />
-            {t({ en: 'Precise location set', ar: 'تم تحديد الموقع بدقة' })}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2 mt-2">
+          {addressMode === 'map' && coords && (
+            <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold bg-white px-2 py-1 rounded-lg border border-emerald-100">
+              <CheckCircle2 className="w-3 h-3" />
+              {t({ en: 'Precise location set', ar: 'تم تحديد الموقع بدقة' })}
+            </div>
+          )}
+          {addressMode === 'normal' && (
+            <div className="flex items-center gap-1 text-[10px] text-blue-600 font-bold bg-white px-2 py-1 rounded-lg border border-blue-100">
+              <Building2 className="w-3 h-3" />
+              {t({ en: 'Structured Address', ar: 'عنوان مفصل' })}
+            </div>
+          )}
+        </div>
       </div>
 
       <AddressDrawer 
@@ -1933,6 +2355,8 @@ const DefaultAddressSection = ({ profile, t }: { profile: UserProfile, t: (ls: a
         onClose={() => setIsDrawerOpen(false)}
         initialAddress={address}
         initialCoords={coords}
+        initialMode={addressMode}
+        initialDetails={addressDetails}
         t={t}
         onSave={handleSave}
       />
@@ -2182,6 +2606,7 @@ const ProfilePage = ({ onNavigate }: { onNavigate: (page: string) => void }) => 
 const StoreRegistration = () => {
   const { user, profile } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -2232,7 +2657,7 @@ const StoreRegistration = () => {
           <StoreIcon className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-bold">{t({ en: 'Register as a Store', ar: 'التسجيل كمتجر' })}</h2>
-        <p className="text-gray-500 text-sm mt-2">{t({ en: `Start selling your products on ${t(config.name)} today.`, ar: `ابدأ ببيع منتجاتك على ${t(config.name)} اليوم.` })}</p>
+        <p className="text-gray-500 text-sm mt-2">{t({ en: `Start selling your products on ${t(appSettings.appName)} today.`, ar: `ابدأ ببيع منتجاتك على ${t(appSettings.appName)} اليوم.` })}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -2345,6 +2770,7 @@ const ImageUpload = ({
 const DriverRegistration = () => {
   const { user, profile } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     vehicleInfo: ''
@@ -2388,7 +2814,7 @@ const DriverRegistration = () => {
           <Truck className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-bold">{t({ en: 'Become a Driver', ar: 'كن سائقاً' })}</h2>
-        <p className="text-gray-500 text-sm mt-2">{t({ en: `Deliver orders and earn money with ${t(config.name)}.`, ar: `قم بتوصيل الطلبات واكسب المال مع ${t(config.name)}.` })}</p>
+        <p className="text-gray-500 text-sm mt-2">{t({ en: `Deliver orders and earn money with ${t(appSettings.appName)}.`, ar: `قم بتوصيل الطلبات واكسب المال مع ${t(appSettings.appName)}.` })}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -3260,6 +3686,33 @@ const RegionsManagement = () => {
   const { t, lang } = useContext(LanguageContext);
   const { regions, addRegion, updateRegion, deleteRegion } = useRegions();
   const [showAdd, setShowAdd] = useState(false);
+
+  const seedOmanRegions = async () => {
+    const omanRegions = [
+      { name: 'Muscat (مسقط)', type: 'geozone' as const, coordinates: [{ lat: 23.61, lng: 58.59 }, { lat: 23.65, lng: 58.65 }, { lat: 23.55, lng: 58.65 }] },
+      { name: 'Dhofar (ظفار)', type: 'geozone' as const, coordinates: [{ lat: 17.02, lng: 54.09 }, { lat: 17.12, lng: 54.19 }, { lat: 16.92, lng: 54.19 }] },
+      { name: 'Musandam (مسندم)', type: 'geozone' as const, coordinates: [{ lat: 26.15, lng: 56.24 }, { lat: 26.25, lng: 56.34 }, { lat: 26.05, lng: 56.34 }] },
+      { name: 'Buraimi (البريمي)', type: 'geozone' as const, coordinates: [{ lat: 24.25, lng: 55.75 }, { lat: 24.35, lng: 55.85 }, { lat: 24.15, lng: 55.85 }] },
+      { name: 'Dakhiliyah (الداخلية)', type: 'geozone' as const, coordinates: [{ lat: 22.93, lng: 57.53 }, { lat: 23.03, lng: 57.63 }, { lat: 22.83, lng: 57.63 }] },
+      { name: 'North Batinah (شمال الباطنة)', type: 'geozone' as const, coordinates: [{ lat: 24.34, lng: 56.74 }, { lat: 24.44, lng: 56.84 }, { lat: 24.24, lng: 56.84 }] },
+      { name: 'South Batinah (جنوب الباطنة)', type: 'geozone' as const, coordinates: [{ lat: 23.63, lng: 57.43 }, { lat: 23.73, lng: 57.53 }, { lat: 23.53, lng: 57.53 }] },
+      { name: 'North Sharqiyah (شمال الشرقية)', type: 'geozone' as const, coordinates: [{ lat: 22.75, lng: 58.55 }, { lat: 22.85, lng: 58.65 }, { lat: 22.65, lng: 58.65 }] },
+      { name: 'South Sharqiyah (جنوب الشرقية)', type: 'geozone' as const, coordinates: [{ lat: 22.56, lng: 59.52 }, { lat: 22.66, lng: 59.62 }, { lat: 22.46, lng: 59.62 }] },
+      { name: 'Dhahirah (الظاهرة)', type: 'geozone' as const, coordinates: [{ lat: 23.23, lng: 56.51 }, { lat: 23.33, lng: 56.61 }, { lat: 23.13, lng: 56.61 }] },
+      { name: 'Wusta (الوسطى)', type: 'geozone' as const, coordinates: [{ lat: 20.0, lng: 56.5 }, { lat: 20.1, lng: 56.6 }, { lat: 19.9, lng: 56.6 }] }
+    ];
+
+    try {
+      for (const region of omanRegions) {
+        await addRegion(region);
+      }
+      alert('Oman regions seeded successfully');
+    } catch (error) {
+      console.error(error);
+      alert('Error seeding regions');
+    }
+  };
+
   const [editing, setEditing] = useState<Region | null>(null);
   const [newRegion, setNewRegion] = useState<Partial<Region>>({ name: '', type: 'geozone', coordinates: [] });
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
@@ -3314,17 +3767,26 @@ const RegionsManagement = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">{t({ en: 'Regions Management', ar: 'إدارة المناطق' })}</h2>
-        <button 
-          onClick={() => {
-            setEditing(null);
-            setNewRegion({ name: '', type: 'geozone', coordinates: [] });
-            setShowAdd(true);
-          }}
-          className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          {t({ en: 'Add Region', ar: 'إضافة منطقة' })}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={seedOmanRegions}
+            className="text-black bg-gray-100 px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-gray-200"
+          >
+            <Sparkles className="w-4 h-4" />
+            {t({ en: 'Seed Oman', ar: 'تعبئة عمان' })}
+          </button>
+          <button 
+            onClick={() => {
+              setEditing(null);
+              setNewRegion({ name: '', type: 'geozone', coordinates: [] });
+              setShowAdd(true);
+            }}
+            className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            {t({ en: 'Add Region', ar: 'إضافة منطقة' })}
+          </button>
+        </div>
       </div>
 
       {showAdd && (
@@ -3607,13 +4069,13 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
 const AdminPanel = () => {
   const { t } = useContext(LanguageContext);
   const { profile, user } = useContext(AuthContext);
+  const { appSettings, updateAppSettings } = useContext(SettingsContext);
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
   const [tags, setTags] = useState<Tag[]>([]);
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'stores' | 'drivers' | 'orders' | 'users' | 'promotions' | 'categories' | 'tags' | 'app-settings' | 'regions' | 'delivery-methods'>('products');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -3686,12 +4148,6 @@ const AdminPanel = () => {
       setTags(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'tags'));
 
-    const unsubSettings = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
-      if (snap.exists()) {
-        setAppSettings(snap.data() as AppSettings);
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/app'));
-
     return () => {
       unsubProducts();
       unsubStores();
@@ -3700,7 +4156,6 @@ const AdminPanel = () => {
       unsubUsers();
       unsubCats();
       unsubTags();
-      unsubSettings();
     };
   }, [profile]);
 
@@ -4053,15 +4508,6 @@ const AdminPanel = () => {
       alert('Message sent to store owner!');
     } catch (error) {
       console.error('Error sending message to store:', error);
-    }
-  };
-
-  const handleSaveAppSettings = async (settings: AppSettings) => {
-    try {
-      await setDoc(doc(db, 'settings', 'app'), settings);
-      alert('App settings saved!');
-    } catch (error) {
-      console.error('Error saving app settings:', error);
     }
   };
 
@@ -5304,7 +5750,106 @@ const AdminPanel = () => {
         <div className="space-y-6">
           <h2 className="text-2xl font-bold">{t({ en: 'App Settings', ar: 'إعدادات التطبيق' })}</h2>
           <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-8">
-            <div className="space-y-4">
+            {/* App Branding */}
+            <div className="space-y-6">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Settings className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'App Branding', ar: 'هوية التطبيق' })}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'App Name (English)', ar: 'اسم التطبيق (إنجليزي)' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.appName?.en || ''}
+                    onChange={(e) => updateAppSettings({ appName: { ...appSettings.appName, en: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'App Name (Arabic)', ar: 'اسم التطبيق (عربي)' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.appName?.ar || ''}
+                    onChange={(e) => updateAppSettings({ appName: { ...appSettings.appName, ar: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Description (English)', ar: 'الوصف (إنجليزي)' })}</label>
+                  <textarea
+                    value={appSettings.appDescription?.en || ''}
+                    onChange={(e) => updateAppSettings({ appDescription: { ...appSettings.appDescription, en: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium min-h-[100px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Description (Arabic)', ar: 'الوصف (عربي)' })}</label>
+                  <textarea
+                    value={appSettings.appDescription?.ar || ''}
+                    onChange={(e) => updateAppSettings({ appDescription: { ...appSettings.appDescription, ar: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium min-h-[100px] text-right"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Address Modes */}
+            <div className="space-y-4 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Supported Address Modes', ar: 'أوضاع العناوين المدعومة' })}
+              </h3>
+              <p className="text-xs text-gray-500 italic">{t({ en: 'Choose which methods users can use to provide their delivery address', ar: 'اختر الطرق التي يمكن للمستخدمين استخدامها لتقديم عنوان التوصيل الخاص بهم' })}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Home className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Structured Address', ar: 'عنوان مفصل' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Region, Street, Building, etc.', ar: 'المنطقة، الشارع، المبنى، إلخ.' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const modes = appSettings.supportedAddressModes || [];
+                      const newModes = modes.includes('normal') 
+                        ? modes.filter(m => m !== 'normal')
+                        : [...modes, 'normal'];
+                      if (newModes.length === 0) return alert('At least one address mode must be supported');
+                      updateAppSettings({ supportedAddressModes: newModes });
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.supportedAddressModes?.includes('normal') ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.supportedAddressModes?.includes('normal') ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <MapIcon className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Map Picker', ar: 'محدد الخريطة' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Pin point on the map', ar: 'تحديد نقطة على الخريطة' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const modes = appSettings.supportedAddressModes || [];
+                      const newModes = modes.includes('map') 
+                        ? modes.filter(m => m !== 'map')
+                        : [...modes, 'map'];
+                      if (newModes.length === 0) return alert('At least one address mode must be supported');
+                      updateAppSettings({ supportedAddressModes: newModes });
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.supportedAddressModes?.includes('map') ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.supportedAddressModes?.includes('map') ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold">{t({ en: 'Payment Methods', ar: 'طرق الدفع' })}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
@@ -5313,8 +5858,7 @@ const AdminPanel = () => {
                     <span className="font-bold">{t({ en: 'Online Payment', ar: 'الدفع الإلكتروني' })}</span>
                   </div>
                   <button 
-                    onClick={() => handleSaveAppSettings({
-                      ...appSettings,
+                    onClick={() => updateAppSettings({
                       paymentMethods: { ...appSettings.paymentMethods, online: !appSettings.paymentMethods.online }
                     })}
                     className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.online ? 'bg-black' : 'bg-gray-300'}`}
@@ -5328,8 +5872,7 @@ const AdminPanel = () => {
                     <span className="font-bold">{t({ en: 'Cash on Delivery', ar: 'الدفع عند الاستلام' })}</span>
                   </div>
                   <button 
-                    onClick={() => handleSaveAppSettings({
-                      ...appSettings,
+                    onClick={() => updateAppSettings({
                       paymentMethods: { ...appSettings.paymentMethods, cod: !appSettings.paymentMethods.cod }
                     })}
                     className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.cod ? 'bg-black' : 'bg-gray-300'}`}
@@ -5337,6 +5880,27 @@ const AdminPanel = () => {
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.cod ? 'right-1' : 'left-1'}`} />
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold">{t({ en: 'Delivery Restrictions', ar: 'قيود التوصيل' })}</h3>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-emerald-500" />
+                  <div className="flex flex-col">
+                    <span className="font-bold">{t({ en: 'Restrict delivery to regions', ar: 'تقييد التوصيل بالمناطق' })}</span>
+                    <span className="text-[10px] text-gray-500">{t({ en: 'Prevent customers from placing orders outside defined regions', ar: 'منع العملاء من تقديم طلبات خارج المناطق المحددة' })}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => updateAppSettings({
+                    restrictDeliveryToRegions: !appSettings.restrictDeliveryToRegions
+                  })}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.restrictDeliveryToRegions ? 'bg-black' : 'bg-gray-300'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.restrictDeliveryToRegions ? 'right-1' : 'left-1'}`} />
+                </button>
               </div>
             </div>
           </div>
@@ -6101,6 +6665,13 @@ export default function App() {
   });
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState('');
+  const [appSettings, setAppSettings] = useState<AppSettings>({ 
+    paymentMethods: { online: true, cod: true }, 
+    restrictDeliveryToRegions: false,
+    supportedAddressModes: ['normal', 'map'],
+    appName: config.name,
+    appDescription: config.description
+  });
 
   const setLang = async (l: 'en' | 'ar') => {
     setLangState(l);
@@ -6122,6 +6693,16 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [sortOption, setSortOption] = useState('newest');
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+
+  const updateAppSettings = async (settings: Partial<AppSettings>) => {
+    try {
+      const newSettings = { ...appSettings, ...settings };
+      await setDoc(doc(db, 'settings', 'app'), newSettings);
+      alert('App settings saved!');
+    } catch (error) {
+      console.error('Error saving app settings:', error);
+    }
+  };
 
   const t = (ls: LocalizedString | string | any) => {
     if (typeof ls === 'string') return ls;
@@ -6216,6 +6797,22 @@ export default function App() {
     const unsub = onSnapshot(query(collection(db, 'tags'), orderBy('createdAt', 'desc')), (snap) => {
       setTags(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tag)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'tags'));
+    return unsub;
+  }, []);
+
+  // Fetch App Settings
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as AppSettings;
+        setAppSettings({
+          ...data,
+          supportedAddressModes: data.supportedAddressModes || ['normal', 'map'],
+          appName: data.appName || config.name,
+          appDescription: data.appDescription || config.description
+        });
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/app'));
     return unsub;
   }, []);
 
@@ -6384,7 +6981,7 @@ export default function App() {
           className="text-4xl font-black italic tracking-tighter"
           style={{ color: config.theme.primary }}
         >
-          {t(config.name)}
+          {t(appSettings.appName)}
         </motion.div>
       </div>
     );
@@ -6392,8 +6989,9 @@ export default function App() {
 
   return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>
-      <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
-        {profile?.isBanned ? (
+      <SettingsContext.Provider value={{ appSettings, updateAppSettings }}>
+        <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
+          {profile?.isBanned ? (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-center">
             <div className="max-w-md space-y-6">
               <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
@@ -6424,12 +7022,14 @@ export default function App() {
           }}>
           <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, total }}>
             <LocationProvider>
-              <WishlistProvider>
-              <div 
-                className="min-h-screen bg-white font-sans text-black selection:bg-black selection:text-white"
-                dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                style={{ backgroundColor: config.theme.background, color: config.theme.text }}
-              >
+              <RegionsProvider>
+                <DeliveryMethodsProvider>
+                  <WishlistProvider>
+                    <div 
+                      className="min-h-screen bg-white font-sans text-black selection:bg-black selection:text-white"
+                      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                      style={{ backgroundColor: config.theme.background, color: config.theme.text }}
+                    >
               <Navbar 
                 currentPage={currentPage}
                 onNavigate={(page) => {
@@ -6661,13 +7261,16 @@ export default function App() {
               {!localStorage.getItem('kuzama_welcome_seen') && (
                 <WelcomeModal onClose={() => window.location.reload()} />
               )}
-            </div>
-            </WishlistProvider>
-          </LocationProvider>
+                    </div>
+                  </WishlistProvider>
+                </DeliveryMethodsProvider>
+              </RegionsProvider>
+            </LocationProvider>
           </CartContext.Provider>
         </NotificationContext.Provider>
         )}
       </AuthContext.Provider>
-    </LanguageContext.Provider>
+    </SettingsContext.Provider>
+  </LanguageContext.Provider>
   );
 }

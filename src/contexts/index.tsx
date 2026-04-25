@@ -5,9 +5,6 @@ import { CartProvider } from './CartContext';
 import { NotificationProvider } from './NotificationContext';
 import { WishlistProvider } from './WishlistContext';
 import { LocationProvider } from './LocationContext';
-import { RegionsProvider } from '../hooks/useRegions';
-import { DeliveryMethodsProvider } from '../hooks/useDeliveryMethods';
-
 export const AppProviders = ({ children }: { children: React.ReactNode }) => {
   return (
     <LanguageProvider>
@@ -16,11 +13,7 @@ export const AppProviders = ({ children }: { children: React.ReactNode }) => {
           <NotificationProvider>
             <WishlistProvider>
               <LocationProvider>
-                <RegionsProvider>
-                  <DeliveryMethodsProvider>
-                    {children}
-                  </DeliveryMethodsProvider>
-                </RegionsProvider>
+                {children}
               </LocationProvider>
             </WishlistProvider>
           </NotificationProvider>

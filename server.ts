@@ -27,7 +27,10 @@ async function startServer() {
       const { amount, currency, customerName, customerEmail, orderId } = req.body;
 
       if (!MYFATOORAH_TOKEN) {
-        return res.status(500).json({ error: "MyFatoorah API key is missing" });
+        return res.status(200).json({ 
+          IsSuccess: false, 
+          Message: "MyFatoorah API key is missing. Please set MYFATOORAH_API_KEY in secrets." 
+        });
       }
 
       const response = await axios.post(
@@ -55,8 +58,16 @@ async function startServer() {
 
       res.json(response.data);
     } catch (error: any) {
-      console.error("MyFatoorah Error:", error.response?.data || error.message);
-      res.status(500).json({ error: error.response?.data || error.message });
+      if (error.response) {
+        console.error("MyFatoorah API Error Detail:", JSON.stringify(error.response.data, null, 2));
+      } else {
+        console.error("MyFatoorah Error:", error.message);
+      }
+      const apiError = error.response?.data;
+      res.status(200).json({ 
+        IsSuccess: false, 
+        Message: apiError?.Message || apiError?.error || error.message || "Payment initiation failed" 
+      });
     }
   });
 
@@ -64,6 +75,13 @@ async function startServer() {
   app.get("/api/payment/verify", async (req, res) => {
     try {
       const { paymentId } = req.query;
+
+      if (!MYFATOORAH_TOKEN) {
+        return res.status(200).json({ 
+          IsSuccess: false, 
+          Message: "MyFatoorah API key is missing." 
+        });
+      }
 
       const response = await axios.post(
         `${MYFATOORAH_API_URL}/v2/GetPaymentStatus`,
@@ -82,7 +100,11 @@ async function startServer() {
       res.json(response.data);
     } catch (error: any) {
       console.error("Verification Error:", error.response?.data || error.message);
-      res.status(500).json({ error: error.response?.data || error.message });
+      const apiError = error.response?.data;
+      res.status(200).json({ 
+        IsSuccess: false, 
+        Message: apiError?.Message || apiError?.error || error.message || "Verification failed" 
+      });
     }
   });
 

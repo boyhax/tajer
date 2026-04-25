@@ -29,9 +29,20 @@ export const CheckoutPage = ({ onComplete }: CheckoutPageProps) => {
   const [loading, setLoading] = useState(false);
   const [address, setAddress] = useState(savedAddress || profile?.address || '');
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(savedLocation || profile?.defaultLocation || null);
+  const [addressMode, setAddressMode] = useState<'normal' | 'map'>(profile?.addressMode || 'map');
+  const [addressDetails, setAddressDetails] = useState(profile?.addressDetails);
   const [isAddressDrawerOpen, setIsAddressDrawerOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true } });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ paymentMethods: { online: true, cod: true }, restrictDeliveryToRegions: false });
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
+
+  useEffect(() => {
+    if (profile) {
+      if (!savedAddress && profile.address) setAddress(profile.address);
+      if (!savedLocation && profile.defaultLocation) setCoords(profile.defaultLocation);
+      setAddressMode(profile.addressMode || 'map');
+      setAddressDetails(profile.addressDetails);
+    }
+  }, [profile]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
@@ -69,6 +80,8 @@ export const CheckoutPage = ({ onComplete }: CheckoutPageProps) => {
           name: user?.displayName || '',
           email: user?.email || '',
           address: address,
+          addressMode,
+          addressDetails: addressDetails || undefined,
           destinationCoords: coords || undefined
         }
       };
@@ -97,7 +110,9 @@ export const CheckoutPage = ({ onComplete }: CheckoutPageProps) => {
       if (data.IsSuccess) {
         window.location.href = data.Data.PaymentURL;
       } else {
-        throw new Error(data.Message || 'Payment initiation failed');
+        const validationError = data.ValidationErrors?.[0]?.Error || data.ValidationErrors?.[0]?.Message;
+        const errorMessage = data.Message || validationError || 'Payment initiation failed';
+        throw new Error(errorMessage);
       }
     } catch (error: any) {
       console.error(error);
@@ -147,10 +162,14 @@ export const CheckoutPage = ({ onComplete }: CheckoutPageProps) => {
                 onClose={() => setIsAddressDrawerOpen(false)}
                 initialAddress={address}
                 initialCoords={coords}
+                initialMode={addressMode}
+                initialDetails={addressDetails}
                 t={t}
-                onSave={(newAddress, newCoords) => {
+                onSave={(newAddress, newCoords, mode, details) => {
                   setAddress(newAddress);
                   setCoords(newCoords);
+                  setAddressMode(mode);
+                  setAddressDetails(details);
                 }}
               />
             </div>

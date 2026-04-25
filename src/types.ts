@@ -67,6 +67,15 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
+export interface AddressDetails {
+  regionId?: string;
+  streetName?: string;
+  buildingNumber?: string;
+  floorNumber?: string;
+  apartmentNumber?: string;
+  additionalInstructions?: string;
+}
+
 export interface Order {
   id: string;
   userId: string;
@@ -83,6 +92,8 @@ export interface Order {
     name: string;
     email: string;
     address: string;
+    addressMode?: 'normal' | 'map';
+    addressDetails?: AddressDetails;
     destinationCoords?: {
       lat: number;
       lng: number;
@@ -97,6 +108,8 @@ export interface UserProfile {
   role: 'admin' | 'customer' | 'store' | 'driver'; // Keep for legacy compatibility
   roles: ('admin' | 'customer' | 'store' | 'driver')[];
   address?: string;
+  addressMode?: 'normal' | 'map';
+  addressDetails?: AddressDetails;
   defaultLocation?: { lat: number, lng: number };
   isVerified?: boolean;
   isBanned?: boolean;
@@ -113,6 +126,7 @@ export interface Store {
   logoUrl?: string;
   bannerUrl?: string;
   isVerified: boolean;
+  status: 'online' | 'offline';
   isDefault?: boolean;
   adminMessage?: string;
   locals: {
@@ -188,4 +202,8 @@ export interface AppSettings {
     online: boolean;
     cod: boolean;
   };
+  restrictDeliveryToRegions: boolean;
+  supportedAddressModes: ('normal' | 'map')[];
+  appName?: LocalizedString;
+  appDescription?: LocalizedString;
 }
