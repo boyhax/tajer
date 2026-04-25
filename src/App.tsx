@@ -104,6 +104,7 @@ import {
   Navigate
 } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { VirtuosoGrid } from 'react-virtuoso';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
 import L from 'leaflet';
 import { Puck, Render } from "@measured/puck";
@@ -341,7 +342,7 @@ export const AuthContext = createContext<{
   updateProfile: async () => {}
 });
 
-const NotificationContext = createContext<{
+export const NotificationContext = createContext<{
   notifications: AppNotification[];
   unreadCount: number;
   markAsRead: (id: string) => Promise<void>;
@@ -355,7 +356,7 @@ const NotificationContext = createContext<{
   requestPermission: async () => {}
 });
 
-const WishlistContext = createContext<{
+export const WishlistContext = createContext<{
   wishlist: string[];
   toggleWishlist: (productId: string) => Promise<void>;
   isInWishlist: (productId: string) => boolean;
@@ -1003,14 +1004,16 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
   );
 };
 
-const ProductCard = ({ 
+export type ProductCardVariant = 'default' | 'local-delivery' | 'minimal' | 'modern' | 'cover' | 'glass';
+
+export const ProductCard = ({ 
   product, 
   onSelect,
   variant: propVariant
 }: { 
   product: Product, 
   onSelect: (p: Product) => void,
-  variant?: 'default' | 'local-delivery' | 'minimal',
+  variant?: ProductCardVariant,
   key?: string
 }) => {
   const { t } = useContext(LanguageContext);
@@ -1027,6 +1030,159 @@ const ProductCard = ({
     if (product.categories.includes('food') || product.categories.includes('drinks')) {
       variant = 'local-delivery';
     }
+  }
+
+  if (variant === 'cover') {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="group cursor-pointer relative aspect-[4/5] rounded-[2rem] overflow-hidden transition-all duration-500 shadow-lg"
+        onClick={() => onSelect(product)}
+        whileHover={{ scale: 0.98 }}
+      >
+        <img 
+          src={product.image || undefined} 
+          alt={t(product.locals.name)} 
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+        
+        <div className="absolute top-4 right-4 z-20">
+          {user && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleWishlist(product.id);
+              }}
+              className={`p-2.5 rounded-2xl shadow-xl backdrop-blur-md transition-all ${
+                isInWishlist(product.id) 
+                  ? 'bg-red-500 text-white' 
+                  : 'bg-white/20 text-white hover:bg-red-500'
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+            </button>
+          )}
+        </div>
+
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-white space-y-2">
+          <div className="space-y-1">
+            <h3 className="font-black text-lg line-clamp-1 tracking-tighter uppercase italic">{t(product.locals.name)}</h3>
+            <p className="text-white/60 text-[10px] font-black uppercase tracking-[0.3em]">{product.brand}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-black text-2xl tracking-tighter">{product.price} <span className="text-[10px] text-white/50">{t(appSettings.currency?.symbol || config.currency.symbol)}</span></span>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                addToCart(product);
+              }}
+              className="w-12 h-12 bg-emerald-500 text-white rounded-[1.25rem] flex items-center justify-center shadow-2xl hover:bg-emerald-600 transition-all active:scale-90"
+            >
+              <ShoppingCart className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (variant === 'modern') {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="group cursor-pointer"
+        onClick={() => onSelect(product)}
+        whileHover={{ y: -5 }}
+      >
+        <div className="aspect-[3/4] relative rounded-[3rem] overflow-hidden bg-gray-50 mb-6 shadow-sm group-hover:shadow-2xl transition-all duration-500">
+          <img 
+            src={product.image || undefined} 
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
+            alt={t(product.locals.name)} 
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
+            {user && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleWishlist(product.id);
+                }}
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
+                  isInWishlist(product.id) ? 'bg-red-500 text-white' : 'bg-white/80 text-gray-400 hover:text-red-500'
+                }`}
+              >
+                <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+              </button>
+            )}
+          </div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(product);
+            }}
+            className="absolute bottom-6 left-6 right-6 py-4 bg-black text-white rounded-2xl font-black uppercase tracking-widest text-[10px] opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0 hover:bg-emerald-500 shadow-2xl"
+          >
+            {t({ en: 'Quick Shop', ar: 'تسوق سريع' })}
+          </button>
+        </div>
+        <div className="px-4">
+           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-1">{product.brand}</p>
+           <h4 className="text-xl font-black italic uppercase tracking-tighter leading-none mb-3 group-hover:text-emerald-600 transition-colors line-clamp-1">{t(product.locals.name)}</h4>
+           <div className="flex items-center gap-2">
+             <span className="text-2xl font-black tracking-tighter">{product.price}</span>
+             <span className="text-[10px] font-bold text-gray-300 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+           </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (variant === 'glass') {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="group cursor-pointer relative aspect-[3/4] rounded-[2.5rem] overflow-hidden transition-all duration-500 bg-white/5 border border-white/20 backdrop-blur-sm shadow-xl"
+        onClick={() => onSelect(product)}
+        whileHover={{ scale: 1.02 }}
+      >
+        <img 
+          src={product.image || undefined} 
+          alt={t(product.locals.name)} 
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+        <div className="absolute inset-x-0 bottom-0 p-6 bg-white/10 backdrop-blur-xl border-t border-white/20 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
+           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 mb-1">{product.brand}</p>
+           <h4 className="text-lg font-black text-white italic uppercase tracking-tighter leading-none mb-4 line-clamp-1">{t(product.locals.name)}</h4>
+           <div className="flex items-center justify-between">
+             <div className="flex items-baseline gap-1 shrink-0">
+               <span className="text-xl font-black text-white">{product.price}</span>
+               <span className="text-[8px] font-bold text-white/50 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+             </div>
+             <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addToCart(product);
+                }}
+                className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-all active:scale-90"
+              >
+                <ShoppingCart className="w-5 h-5" />
+              </button>
+           </div>
+        </div>
+      </motion.div>
+    );
   }
 
   if (variant === 'local-delivery') {
@@ -6655,7 +6811,7 @@ const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: 
 const FilterSidebar = ({ 
   categories, 
   brands, 
-  selectedCategoryId, 
+  selectedCategoryIds, 
   setSelectedCategoryId, 
   selectedBrand, 
   setSelectedBrand, 
@@ -6667,7 +6823,7 @@ const FilterSidebar = ({
 }: { 
   categories: Category[], 
   brands: string[], 
-  selectedCategoryId: string, 
+  selectedCategoryIds: string[], 
   setSelectedCategoryId: (c: string) => void, 
   selectedBrand: string, 
   setSelectedBrand: (b: string) => void, 
@@ -6709,7 +6865,7 @@ const FilterSidebar = ({
         <div className="space-y-2">
           <button 
             onClick={() => setSelectedCategoryId('')}
-            className={`block text-sm ${selectedCategoryId === '' ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+            className={`block text-sm ${selectedCategoryIds.length === 0 ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
           >
             {t({ en: 'All Categories', ar: 'جميع الفئات' })}
           </button>
@@ -6717,7 +6873,7 @@ const FilterSidebar = ({
             <button 
               key={c.id}
               onClick={() => setSelectedCategoryId(c.id)}
-              className={`block text-sm ${selectedCategoryId === c.id ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+              className={`block text-sm ${selectedCategoryIds.includes(c.id) ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
             >
               {t(c.locals.title)}
             </button>
@@ -6837,7 +6993,7 @@ const CategoryProducts = ({ categoryId, onSelectProduct }: { categoryId: string,
 const FilterDrawer = ({ 
   onClose,
   categories,
-  selectedCategoryId,
+  selectedCategoryIds,
   setSelectedCategoryId,
   sortOption,
   setSortOption,
@@ -6847,7 +7003,7 @@ const FilterDrawer = ({
 }: { 
   onClose: () => void;
   categories: Category[];
-  selectedCategoryId: string;
+  selectedCategoryIds: string[];
   setSelectedCategoryId: (c: string) => void;
   sortOption: string;
   setSortOption: (s: string) => void;
@@ -6910,19 +7066,19 @@ const FilterDrawer = ({
             <div className="space-y-3">
               <button 
                 onClick={() => setSelectedCategoryId('')}
-                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryId === '' ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryIds.length === 0 ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
               >
                 <span className="font-bold text-sm tracking-tight">{t({ en: 'All Items', ar: 'جميع المنتجات' })}</span>
-                {selectedCategoryId === '' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                {selectedCategoryIds.length === 0 && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
               </button>
               {categories.map(c => (
                 <button 
                   key={c.id}
                   onClick={() => setSelectedCategoryId(c.id)}
-                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryId === c.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryIds.includes(c.id) ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
                 >
                    <span className="font-bold text-sm tracking-tight">{t(c.locals?.title)}</span>
-                  {selectedCategoryId === c.id && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  {selectedCategoryIds.includes(c.id) && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                 </button>
               ))}
             </div>
@@ -7053,11 +7209,27 @@ function MainApp() {
     setSearchParams(newParams);
   };
 
-  const selectedCategoryId = searchParams.get('category') || '';
+  const selectedCategoryIds = useMemo(() => {
+    const ids: string[] = [];
+    const cat = searchParams.get('category');
+    if (cat) ids.push(cat);
+    const cats = searchParams.get('categories');
+    if (cats) {
+      cats.split(',').forEach(id => {
+        if (id && !ids.includes(id)) ids.push(id);
+      });
+    }
+    return ids;
+  }, [searchParams]);
+
+  const selectedCategoryId = selectedCategoryIds[0] || '';
+
   const setSelectedCategoryId = (c: string) => {
     const newParams = new URLSearchParams(searchParams);
     if (c) newParams.set('category', c);
     else newParams.delete('category');
+    // Also clear categories plural if we are setting a specific singular one for simplicity in UI toggle
+    newParams.delete('categories');
     setSearchParams(newParams);
   };
 
@@ -7069,7 +7241,18 @@ function MainApp() {
     setSearchParams(newParams);
   };
 
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
+  const minPrice = Number(searchParams.get('minPrice')) || 0;
+  const maxPrice = Number(searchParams.get('maxPrice')) || 10000;
+  const priceRange: [number, number] = [minPrice, maxPrice];
+  
+  const setPriceRange = (range: [number, number]) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (range[0] > 0) newParams.set('minPrice', range[0].toString());
+    else newParams.delete('minPrice');
+    if (range[1] < 10000) newParams.set('maxPrice', range[1].toString());
+    else newParams.delete('maxPrice');
+    setSearchParams(newParams);
+  };
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -7088,6 +7271,19 @@ function MainApp() {
     else newParams.delete('tag');
     setSearchParams(newParams);
   };
+
+  const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
+    <div
+      {...props}
+      ref={ref}
+      className={cn(
+        "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 md:gap-x-8 md:gap-y-12",
+        props.className
+      )}
+    >
+      {children}
+    </div>
+  ));
 
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
@@ -7119,7 +7315,7 @@ function MainApp() {
       const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                            brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            description.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategoryId === '' || p.categories.includes(selectedCategoryId);
+      const matchesCategory = selectedCategoryIds.length === 0 || selectedCategoryIds.some(id => p.categories.includes(id));
       const matchesBrand = selectedBrand === '' || p.brand === selectedBrand;
       const matchesPrice = p.price >= priceRange[0] && p.price <= priceRange[1];
       const matchesTag = selectedTagId === '' || (p.tags && p.tags.includes(selectedTagId));
@@ -7541,20 +7737,20 @@ function MainApp() {
                               <Carousel opts={{ align: "start", loop: false, dragFree: true }} className="w-full" dir={lang === 'ar' ? 'rtl' : 'ltr'} key={`cat-carousel-${categories.length}`}>
                                 <CarouselContent className="-ms-2">
                                   <CarouselItem className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                    <button onClick={() => setSelectedCategoryId('')} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${!selectedCategoryId ? 'ring-2 ring-emerald-500' : ''}`}>
-                                      <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${!selectedCategoryId ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                                    <button onClick={() => setSelectedCategoryId('')} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryIds.length === 0 ? 'ring-2 ring-emerald-500' : ''}`}>
+                                      <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${selectedCategoryIds.length === 0 ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
                                          <ShoppingBag className="w-4 h-4" />
                                       </div>
                                     </button>
-                                    <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${!selectedCategoryId ? 'text-black' : 'text-gray-400'}`}>{t({ en: 'All', ar: 'الكل' })}</p>
+                                    <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryIds.length === 0 ? 'text-black' : 'text-gray-400'}`}>{t({ en: 'All', ar: 'الكل' })}</p>
                                   </CarouselItem>
                                   {categories.map(cat => (
                                     <CarouselItem key={cat.id} className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                      <button onClick={() => setSelectedCategoryId(cat.id)} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryId === cat.id ? 'ring-2 ring-emerald-500' : ''}`}>
+                                      <button onClick={() => setSelectedCategoryId(cat.id)} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryIds.includes(cat.id) ? 'ring-2 ring-emerald-500' : ''}`}>
                                         {cat.bannerImageUrl && <img src={cat.bannerImageUrl} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.name)} />}
-                                        <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryId === cat.id ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}></div>
+                                        <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryIds.includes(cat.id) ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}></div>
                                       </button>
-                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryId === cat.id ? 'text-black' : 'text-gray-400'}`}>{t(cat.name)}</p>
+                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryIds.includes(cat.id) ? 'text-black' : 'text-gray-400'}`}>{t(cat.name)}</p>
                                     </CarouselItem>
                                   ))}
                                 </CarouselContent>
@@ -7567,22 +7763,46 @@ function MainApp() {
                             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">{t({ en: 'Currently Viewing', ar: 'تشاهد الآن' })}:</span>
                             <div className="flex flex-wrap gap-2">
                               <span className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-emerald-100">{filteredProducts.length} {t({ en: 'Products', ar: 'منتجات' })}</span>
-                              {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
-                                <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }} className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"><X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}</button>
+                              {(selectedCategoryIds.length > 0 || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
+                                <button onClick={() => { 
+                                  setSelectedCategoryId(''); 
+                                  setSelectedBrand(''); 
+                                  setSelectedTagId(''); 
+                                  setSearchQuery(''); 
+                                  setPriceRange([0, 10000]);
+                                }} className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"><X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}</button>
                               )}
                             </div>
                           </div>
                         </div>
-                        <div className="relative">
+                        <div className="relative min-h-[600px]">
                           {filteredProducts.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 md:gap-x-12 md:gap-y-20">
-                              {filteredProducts.map(product => <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />)}
-                            </div>
+                            <VirtuosoGrid
+                              useWindowScroll
+                              data={filteredProducts}
+                              components={{
+                                List: GridContainer,
+                                Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
+                                  <div {...props} ref={ref} className="p-1">
+                                    {children}
+                                  </div>
+                                ))
+                              }}
+                              itemContent={(index, product) => (
+                                <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
+                              )}
+                            />
                           ) : (
                             <div className="py-40 text-center bg-gray-50 rounded-[4rem] border-4 border-dashed border-gray-100">
                               <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl"><Search className="w-10 h-10 text-gray-200" /></div>
                               <h3 className="text-3xl font-black italic uppercase tracking-tighter mb-4">{t({ en: 'Nothing Found', ar: 'لم يتم العثور على شيء' })}</h3>
-                              <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }} className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all">{t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}</button>
+                              <button onClick={() => { 
+                                setSelectedCategoryId(''); 
+                                setSelectedBrand(''); 
+                                setSelectedTagId(''); 
+                                setSearchQuery(''); 
+                                setPriceRange([0, 10000]);
+                              }} className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all">{t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}</button>
                             </div>
                           )}
                         </div>
@@ -7689,7 +7909,7 @@ function MainApp() {
                   <FilterDrawer 
                     onClose={() => setShowFilterDrawer(false)}
                     categories={categories}
-                    selectedCategoryId={selectedCategoryId}
+                    selectedCategoryIds={selectedCategoryIds}
                     setSelectedCategoryId={setSelectedCategoryId}
                     sortOption={sortOption}
                     setSortOption={setSortOption}

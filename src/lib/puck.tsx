@@ -17,10 +17,19 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Filter,
-  ArrowUpDown
+  ArrowUpDown,
+  ChevronRight
 } from "lucide-react";
-import { DataContext, LanguageContext, SettingsContext } from "../App";
-import { Product, Store, Category } from "../types";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { VirtuosoGrid } from 'react-virtuoso';
+import { 
+  DataContext, 
+  LanguageContext, 
+  SettingsContext, 
+  ProductCard,
+  ProductCardVariant
+} from "../App";
+import { Product, Store, Category, Tag } from "../types";
 import { config as appConfig } from "./config";
 import { cn } from "./utils";
 import { 
@@ -81,18 +90,37 @@ export type PuckConfig = {
     address: string;
   };
   StoresExplore: {
+    title?: string;
+    description?: string;
+    seeMoreLabel?: string;
+    seeMorePath?: string;
     layout: "grid" | "carousel";
     limit: number;
   };
   ProductsExplore: {
+    title?: string;
+    description?: string;
+    image?: string;
+    icon?: string;
+    seeMoreLabel?: string;
+    seeMorePath?: string;
     layout: "grid" | "carousel";
+    cardVariant?: ProductCardVariant;
     categoryIds: { id: string }[];
+    defaultTagId?: string;
+    defaultSearch?: string;
+    useUrlParams?: boolean;
+    enableVirtualScroll?: boolean;
     limit: number;
     showFilters: boolean;
     enableSearch?: boolean;
     enableSort?: boolean;
   };
   CategoriesExplore: {
+    title?: string;
+    description?: string;
+    seeMoreLabel?: string;
+    seeMorePath?: string;
     layout: "grid" | "carousel";
     limit: number;
   };
@@ -379,6 +407,10 @@ export const config: Config<PuckConfig> = {
     },
     StoresExplore: {
       fields: {
+        title: { type: "text" },
+        description: { type: "textarea" },
+        seeMoreLabel: { type: "text" },
+        seeMorePath: { type: "text" },
         layout: {
           type: "select",
           options: [
@@ -388,76 +420,103 @@ export const config: Config<PuckConfig> = {
         },
         limit: { type: "number" }
       },
-      render: ({ layout, limit }) => {
+      render: ({ title, description, seeMoreLabel, seeMorePath, layout, limit }) => {
         const { stores, loading } = useContext(DataContext);
         const { t, lang } = useContext(LanguageContext);
+        const navigate = useNavigate();
  
         if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Loading Stores...</div>;
  
         const displayedStores = stores.slice(0, limit || 4);
  
-        if (layout === "carousel") {
-          return (
-            <div className="py-12">
-               {displayedStores.length > 0 && (
-                 <Carousel 
-                  opts={{ align: "start", loop: displayedStores.length > 2, dragFree: true }}
-                  className="w-full"
-                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                  key={`stores-carousel-${displayedStores.map(s => s.id).join(',')}`}
-                >
-                  <CarouselContent>
-                    {displayedStores.map(store => (
-                      <CarouselItem key={store.id} className="md:basis-1/2 lg:basis-1/3">
-                        <div className="p-8 bg-white border border-gray-50 rounded-[40px] shadow-sm hover:shadow-xl transition-all group h-full">
-                          <div className="w-20 h-20 bg-gray-50 rounded-[24px] overflow-hidden mb-8 group-hover:scale-105 transition-transform">
-                            {store.logoUrl ? (
-                               <img src={store.logoUrl} className="w-full h-full object-cover" alt={t(store.locals.name)} />
-                            ) : (
-                               <StoreIcon className="w-full h-full p-6 text-gray-200" />
-                            )}
-                          </div>
-                          <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">{t(store.locals.name)}</h3>
-                          <p className="text-gray-400 text-sm font-medium leading-relaxed line-clamp-2 mb-6">{t(store.locals.description)}</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">Official Store</span>
-                            <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-black transition-colors" />
-                          </div>
-                        </div>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                </Carousel>
-               )}
-            </div>
-          );
-        }
- 
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 py-12">
-            {displayedStores.map(store => (
-              <div key={store.id} className="p-8 bg-white border border-gray-100 rounded-[40px] shadow-sm hover:shadow-xl transition-all group">
-                <div className="w-24 h-24 bg-gray-50 rounded-[32px] overflow-hidden mb-8">
-                  {store.logoUrl ? (
-                    <img src={store.logoUrl} className="w-full h-full object-cover" alt={t(store.locals.name)} />
-                  ) : (
-                    <StoreIcon className="w-full h-full p-8 text-gray-200" />
-                  )}
+          <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+             {(title || description || seeMoreLabel) && (
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                  {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                  {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
                 </div>
-                <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t(store.locals.name)}</h3>
-                <p className="text-gray-400 text-xs font-medium line-clamp-2 mb-6">{t(store.locals.description)}</p>
-                <div className="pt-6 border-t border-gray-50 flex items-center justify-between group-hover:border-black/5">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Visit Store</span>
-                  <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-black transition-colors" />
-                </div>
+                {seeMoreLabel && (
+                  <button 
+                    onClick={() => seeMorePath && navigate(seeMorePath)}
+                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+                  >
+                    {t(seeMoreLabel)}
+                    <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                )}
               </div>
-            ))}
+            )}
+
+            {layout === "carousel" ? (
+              <div className="w-full">
+                 {displayedStores.length > 0 && (
+                   <Carousel 
+                    opts={{ align: "start", loop: displayedStores.length > 2, dragFree: true }}
+                    className="w-full"
+                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                    key={`stores-carousel-${displayedStores.map(s => s.id).join(',')}`}
+                  >
+                    <CarouselContent>
+                      {displayedStores.map(store => (
+                        <CarouselItem key={store.id} className="basis-full sm:basis-1/2 lg:basis-1/3 xl:basis-1/4">
+                          <div className="p-8 bg-white border border-gray-50 rounded-[40px] shadow-sm hover:shadow-xl transition-all group h-full">
+                            <div className="w-20 h-20 bg-gray-50 rounded-[24px] overflow-hidden mb-8 group-hover:scale-105 transition-transform">
+                              {store.logoUrl ? (
+                                 <img src={store.logoUrl} className="w-full h-full object-cover" alt={t(store.locals.name)} />
+                              ) : (
+                                 <StoreIcon className="w-full h-full p-6 text-gray-200" />
+                              )}
+                            </div>
+                            <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">{t(store.locals.name)}</h3>
+                            <p className="text-gray-400 text-sm font-medium leading-relaxed line-clamp-2 mb-6">{t(store.locals.description)}</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">Official Store</span>
+                              <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-black transition-colors" />
+                            </div>
+                          </div>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                  </Carousel>
+                 )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-8">
+                {displayedStores.map(store => (
+                  <div key={store.id} className="p-8 bg-white border border-gray-100 rounded-[40px] shadow-sm hover:shadow-xl transition-all group">
+                    <div className="w-24 h-24 bg-gray-50 rounded-[32px] overflow-hidden mb-8">
+                      {store.logoUrl ? (
+                        <img src={store.logoUrl} className="w-full h-full object-cover" alt={t(store.locals.name)} />
+                      ) : (
+                        <StoreIcon className="w-full h-full p-8 text-gray-200" />
+                      )}
+                    </div>
+                    <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t(store.locals.name)}</h3>
+                    <p className="text-gray-400 text-xs font-medium line-clamp-2 mb-6">{t(store.locals.description)}</p>
+                    <div className="pt-6 border-t border-gray-50 flex items-center justify-between group-hover:border-black/5 transition-colors">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t({ en: 'Visit Store', ar: 'زيارة المتجر' })}</span>
+                      <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-black transition-colors" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
     },
     ProductsExplore: {
       fields: {
+        title: { type: "text" },
+        description: { type: "textarea" },
+        image: { type: "text" },
+        icon: { type: "text" },
+        seeMoreLabel: { type: "text" },
+        seeMorePath: { type: "text" },
         layout: {
           type: "select",
           options: [
@@ -465,34 +524,131 @@ export const config: Config<PuckConfig> = {
             { label: "Carousel", value: "carousel" },
           ]
         },
+        cardVariant: {
+          type: "select",
+          options: [
+            { label: "Default", value: "default" },
+            { label: "Modern", value: "modern" },
+            { label: "Cover", value: "cover" },
+            { label: "Glass", value: "glass" },
+            { label: "Minimal", value: "minimal" },
+            { label: "Local Delivery", value: "local-delivery" },
+          ]
+        },
         categoryIds: { type: "array", getItemSummary: (item) => item.id, arrayFields: { id: { type: "text" } } },
+        defaultTagId: { type: "text" },
+        defaultSearch: { type: "text" },
+        useUrlParams: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
+        enableVirtualScroll: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         limit: { type: "number" },
         showFilters: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         enableSearch: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         enableSort: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] }
       },
-      render: ({ layout, categoryIds = [], limit = 8, showFilters = false, enableSearch = false, enableSort = false }) => {
-        const { products, categories, loading } = useContext(DataContext);
+      render: ({ 
+        title, description, image, icon, seeMoreLabel, seeMorePath, 
+        layout, cardVariant, categoryIds = [], defaultTagId, defaultSearch, 
+        useUrlParams, enableVirtualScroll, limit = 8, 
+        showFilters = false, enableSearch = false, enableSort = false 
+      }) => {
+        const { products, categories, tags, loading } = useContext(DataContext);
         const { t, lang } = useContext(LanguageContext);
         const { appSettings } = useContext(SettingsContext);
-        const [activeCategory, setActiveCategory] = useState<string>('all');
-        const [search, setSearch] = useState('');
+        const navigate = useNavigate();
+        const [searchParams] = useSearchParams();
+        
+        const [internalActiveCategory, setInternalActiveCategory] = useState<string>('all');
+        const [internalSearch, setInternalSearch] = useState('');
+        const [internalTag, setInternalTag] = useState<string>(defaultTagId || '');
  
         if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Fetching Products...</div>;
  
+        const urlCategory = searchParams.get('category');
+        const urlSearch = searchParams.get('search');
+        const urlTag = searchParams.get('tag');
+
+        const activeCategory = useUrlParams ? (urlCategory || 'all') : internalActiveCategory;
+        const search = useUrlParams ? (urlSearch || '') : (internalSearch || defaultSearch || '');
+        const tag = useUrlParams ? (urlTag || '') : (internalTag || defaultTagId || '');
+
         const filtered = products.filter(p => {
           const categoryMatch = categoryIds.length === 0 || categoryIds.some(c => p.categories.includes(c.id));
           const activeFilterMatch = activeCategory === 'all' || p.categories.includes(activeCategory);
           const searchMatch = !search || t(p.locals.name).toLowerCase().includes(search.toLowerCase());
-          return categoryMatch && activeFilterMatch && searchMatch;
-        }).slice(0, limit);
- 
+          const tagMatch = !tag || p.tags.includes(tag);
+          return categoryMatch && activeFilterMatch && searchMatch && tagMatch;
+        });
+
+        const displayed = limit ? filtered.slice(0, limit) : filtered;
+  
         const filterOptions = categoryIds.length > 0 
           ? categories.filter(c => categoryIds.some(cid => cid.id === c.id))
           : categories.slice(0, 6);
+
+        const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
+          <div
+            {...props}
+            ref={ref}
+            className={cn(
+              "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6 md:gap-10",
+              props.className
+            )}
+          >
+            {children}
+          </div>
+        ));
+
+        const ProductCardComponent = ({ product }: { product: Product; key?: any }) => (
+          <ProductCard product={product} onSelect={(p) => navigate(`/product/${p.id}`)} variant={cardVariant} />
+        );
  
         return (
           <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+            {(title || description || image || icon || seeMoreLabel) && (
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+                <div className="flex gap-6 items-start">
+                  {image && (
+                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-[2rem] overflow-hidden shadow-2xl shrink-0">
+                      <img src={image} className="w-full h-full object-cover" alt="" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-4 mb-2">
+                      {icon && (
+                        <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center">
+                          <ImageIcon className="w-5 h-5" />
+                        </div>
+                      )}
+                      {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                    </div>
+                    {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+                  </div>
+                </div>
+                {seeMoreLabel && (
+                  <button 
+                    onClick={() => {
+                      if (seeMorePath) {
+                        navigate(seeMorePath);
+                      } else {
+                        // Default redirection to shop with current filters
+                        const params = new URLSearchParams();
+                        if (activeCategory !== 'all') params.set('category', activeCategory);
+                        if (search) params.set('search', search);
+                        if (tag) params.set('tag', tag);
+                        navigate(`/shop?${params.toString()}`);
+                      }
+                    }}
+                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors pointer-events-auto"
+                  >
+                    {t(seeMoreLabel)}
+                    <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+
             {(showFilters || enableSearch || enableSort) && (
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4">
@@ -502,7 +658,16 @@ export const config: Config<PuckConfig> = {
                       <input 
                         type="text"
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onPointerDown={e => e.stopPropagation()}
+                        onChange={(e) => {
+                          if (useUrlParams) {
+                            // URL params are handled by App.tsx search logic usually, 
+                            // but here we are inside a Puck component which might be on any page.
+                            // If we want it to update URL, we'd need to use setSearchParams.
+                          } else {
+                            setInternalSearch(e.target.value);
+                          }
+                        }}
                         placeholder={t({ en: 'Search items...', ar: 'ابحث عن عناصر...' })}
                         className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-[1.5rem] focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-widest"
                       />
@@ -519,7 +684,7 @@ export const config: Config<PuckConfig> = {
                 {showFilters && (
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                     <button 
-                      onClick={() => setActiveCategory('all')}
+                      onClick={() => !useUrlParams && setInternalActiveCategory('all')}
                       className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === 'all' ? 'bg-black text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
                     >
                       {t({ en: 'All Items', ar: 'الكل' })}
@@ -527,7 +692,7 @@ export const config: Config<PuckConfig> = {
                     {filterOptions.map(cat => (
                       <button 
                         key={cat.id}
-                        onClick={() => setActiveCategory(cat.id)}
+                        onClick={() => !useUrlParams && setInternalActiveCategory(cat.id)}
                         className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat.id ? 'bg-black text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
                       >
                         {t(cat.locals.title)}
@@ -540,34 +705,17 @@ export const config: Config<PuckConfig> = {
  
             {layout === "carousel" ? (
               <div className="w-full">
-                {filtered.length > 0 && (
+                {displayed.length > 0 && (
                   <Carousel 
-                    opts={{ align: "start", loop: filtered.length > 3, dragFree: true }}
+                    opts={{ align: "start", loop: displayed.length > 3, dragFree: true }}
                     className="w-full"
                     dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                    key={`prod-carousel-${filtered.map(p => p.id).join(',')}`}
+                    key={`prod-carousel-${displayed.map(p => p.id).join(',')}`}
                   >
                     <CarouselContent>
-                      {filtered.map(product => (
-                        <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4">
-                           <div className="group h-full">
-                            <div className="relative aspect-[3/4] rounded-[40px] overflow-hidden bg-gray-50 mb-6 shadow-sm group-hover:shadow-2xl transition-all">
-                              <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={t(product.locals.name)} />
-                              <div className="absolute top-6 right-6 p-4 bg-white/90 backdrop-blur shadow-xl rounded-2xl opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
-                                <TrendingUp className="w-4 h-4 text-black" />
-                              </div>
-                              <div className="absolute bottom-6 left-6 right-6 p-6 bg-white/90 backdrop-blur rounded-[32px] opacity-0 group-hover:opacity-100 transition-all translate-y-10 group-hover:translate-y-0">
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-1">{product.brand}</p>
-                                <h4 className="font-black italic uppercase leading-none mb-4 truncate text-sm">{t(product.locals.name)}</h4>
-                                <div className="flex items-center justify-between">
-                                  <span className="font-black text-lg">{product.price} <span className="text-[10px] font-medium">{t(appSettings.currency?.symbol || appConfig.currency.symbol)}</span></span>
-                                  <button className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center hover:scale-110 transition-all shadow-xl">
-                                    <ArrowRight className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                      {displayed.map(product => (
+                        <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
+                           <ProductCardComponent product={product} />
                         </CarouselItem>
                       ))}
                     </CarouselContent>
@@ -575,19 +723,30 @@ export const config: Config<PuckConfig> = {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 md:gap-10">
-                {filtered.map(product => (
-                  <div key={product.id} className="group cursor-pointer">
-                    <div className="aspect-[3/4] relative rounded-[40px] overflow-hidden bg-gray-50 mb-6 group-hover:shadow-2xl transition-all">
-                      <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={t(product.locals.name)} />
-                    </div>
-                    <div className="px-2">
-                       <p className="text-[9px] font-black uppercase tracking-widest text-emerald-500 mb-1">{product.brand}</p>
-                       <h4 className="text-lg font-black italic uppercase tracking-tighter leading-none mb-3 group-hover:text-emerald-600 transition-colors">{t(product.locals.name)}</h4>
-                       <span className="text-xl font-black">{product.price} <span className="text-xs font-bold text-gray-300">{t(appSettings.currency?.symbol || appConfig.currency.symbol)}</span></span>
-                    </div>
+              <div className="relative min-h-[400px]">
+                {enableVirtualScroll ? (
+                  <VirtuosoGrid
+                    useWindowScroll
+                    data={displayed}
+                    components={{
+                      List: GridContainer,
+                      Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
+                        <div {...props} ref={ref} className="p-1">
+                          {children}
+                        </div>
+                      ))
+                    }}
+                    itemContent={(index, product) => (
+                      <ProductCardComponent product={product} />
+                    )}
+                  />
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 md:gap-10">
+                    {displayed.map(product => (
+                      <ProductCardComponent key={product.id} product={product} />
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -596,6 +755,10 @@ export const config: Config<PuckConfig> = {
     },
     CategoriesExplore: {
       fields: {
+        title: { type: "text" },
+        description: { type: "textarea" },
+        seeMoreLabel: { type: "text" },
+        seeMorePath: { type: "text" },
         layout: {
           type: "select",
           options: [
@@ -605,62 +768,95 @@ export const config: Config<PuckConfig> = {
         },
         limit: { type: "number" }
       },
-      render: ({ layout, limit }) => {
+      render: ({ title, description, seeMoreLabel, seeMorePath, layout, limit }) => {
         const { categories, loading } = useContext(DataContext);
         const { t, lang } = useContext(LanguageContext);
+        const navigate = useNavigate();
  
         if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Loading Categories...</div>;
  
         const displayed = categories.filter(c => c.isFeatured).slice(0, limit || 6);
  
-        if (layout === 'carousel') {
-          return (
-            <div className="py-12">
-               {displayed.length > 0 && (
-                 <Carousel 
-                  opts={{ align: "start", loop: displayed.length > 5, dragFree: true }}
-                  className="w-full"
-                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                  key={`cat-explore-carousel-${displayed.map(c => c.id).join(',')}`}
-                >
-                  <CarouselContent>
-                    {displayed.map(cat => (
-                      <CarouselItem key={cat.id} className="basis-1/3 md:basis-1/4 lg:basis-1/6">
-                         <div className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl h-full border-4 border-white">
-                          <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end items-center text-center">
-                             <div className="w-8 h-8 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-2 group-hover:bg-white group-hover:text-black transition-all">
-                               <Star className="w-4 h-4 text-white group-hover:text-black" />
-                             </div>
-                             <h3 className="text-white font-black italic uppercase tracking-tighter text-[10px] leading-none">{t(cat.locals.title)}</h3>
-                          </div>
-                        </div>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                </Carousel>
-               )}
-            </div>
-          );
-        }
-
         return (
-          <div className="py-12">
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-              {displayed.map(cat => (
-                <div key={cat.id}>
-                  <div className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl border-4 border-white">
-                    <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-6 flex flex-col justify-end items-center text-center">
-                       <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-4 group-hover:bg-white group-hover:text-black transition-all">
-                         <Star className="w-5 h-5 text-white group-hover:text-black" />
-                       </div>
-                       <h3 className="text-white font-black italic uppercase tracking-tighter text-xs leading-none">{t(cat.locals.title)}</h3>
+          <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+             {(title || description || seeMoreLabel) && (
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div>
+                  {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                  {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+                </div>
+                {seeMoreLabel && (
+                  <button 
+                    onClick={() => seeMorePath && navigate(seeMorePath)}
+                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+                  >
+                    {t(seeMoreLabel)}
+                    <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {layout === 'carousel' ? (
+              <div className="w-full">
+                 {displayed.length > 0 && (
+                   <Carousel 
+                    opts={{ align: "start", loop: displayed.length > 5, dragFree: true }}
+                    className="w-full"
+                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                    key={`cat-explore-carousel-${displayed.map(c => c.id).join(',')}`}
+                  >
+                    <CarouselContent>
+                      {displayed.map(cat => (
+                        <CarouselItem key={cat.id} className="basis-1/3 md:basis-1/4 lg:basis-1/6 xl:basis-[12.5%]">
+                           <div 
+                             className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl h-full border-4 border-white"
+                             onClick={() => {
+                               const params = new URLSearchParams();
+                               params.set('categories', cat.id);
+                               navigate(`/shop?${params.toString()}`);
+                             }}
+                           >
+                            <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end items-center text-center">
+                               <div className="w-8 h-8 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-2 group-hover:bg-white group-hover:text-black transition-all">
+                                 <Star className="w-4 h-4 text-white group-hover:text-black" />
+                               </div>
+                               <h3 className="text-white font-black italic uppercase tracking-tighter text-[10px] leading-none">{t(cat.locals.title)}</h3>
+                            </div>
+                          </div>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                  </Carousel>
+                 )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10 gap-6">
+                {displayed.map(cat => (
+                  <div key={cat.id}>
+                    <div 
+                      className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl border-4 border-white"
+                      onClick={() => {
+                        const params = new URLSearchParams();
+                        params.set('categories', cat.id);
+                        navigate(`/shop?${params.toString()}`);
+                      }}
+                    >
+                      <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-6 flex flex-col justify-end items-center text-center">
+                         <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-4 group-hover:bg-white group-hover:text-black transition-all">
+                           <Star className="w-5 h-5 text-white group-hover:text-black" />
+                         </div>
+                         <h3 className="text-white font-black italic uppercase tracking-tighter text-xs leading-none">{t(cat.locals.title)}</h3>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
