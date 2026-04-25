@@ -20,6 +20,8 @@ import {
   ArrowUpDown,
   ChevronRight
 } from "lucide-react";
+import { Icon } from "@iconify/react";
+import { useProductSearchParams } from "../hooks/useProductSearchParams";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { VirtuosoGrid } from 'react-virtuoso';
 import { 
@@ -772,10 +774,28 @@ export const config: Config<PuckConfig> = {
         const { categories, loading } = useContext(DataContext);
         const { t, lang } = useContext(LanguageContext);
         const navigate = useNavigate();
+        const { params: filterParams, setCategorySlugs } = useProductSearchParams();
  
         if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Loading Categories...</div>;
  
         const displayed = categories.filter(c => c.isFeatured).slice(0, limit || 6);
+
+        const onCategorySelect = (cat: Category) => {
+          const slugs = [...filterParams.categorySlugs];
+          let updatedSlugs: string[] = [];
+          
+          if (slugs.includes(cat.slug)) {
+            updatedSlugs = slugs.filter(s => s !== cat.slug);
+          } else {
+            updatedSlugs = [...slugs, cat.slug];
+          }
+
+          if (window.location.pathname === '/shop') {
+            setCategorySlugs(updatedSlugs);
+          } else {
+            navigate(`/shop?categories=${updatedSlugs.join(',')}`);
+          }
+        };
  
         return (
           <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -813,16 +833,16 @@ export const config: Config<PuckConfig> = {
                         <CarouselItem key={cat.id} className="basis-1/3 md:basis-1/4 lg:basis-1/6 xl:basis-[12.5%]">
                            <div 
                              className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl h-full border-4 border-white"
-                             onClick={() => {
-                               const params = new URLSearchParams();
-                               params.set('categories', cat.id);
-                               navigate(`/shop?${params.toString()}`);
-                             }}
+                             onClick={() => onCategorySelect(cat)}
                            >
                             <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end items-center text-center">
                                <div className="w-8 h-8 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-2 group-hover:bg-white group-hover:text-black transition-all">
-                                 <Star className="w-4 h-4 text-white group-hover:text-black" />
+                                 {cat.icon ? (
+                                   <Icon icon={cat.icon} className="w-5 h-5 text-white group-hover:text-black" />
+                                 ) : (
+                                   <Star className="w-4 h-4 text-white group-hover:text-black" />
+                                 )}
                                </div>
                                <h3 className="text-white font-black italic uppercase tracking-tighter text-[10px] leading-none">{t(cat.locals.title)}</h3>
                             </div>
@@ -839,16 +859,16 @@ export const config: Config<PuckConfig> = {
                   <div key={cat.id}>
                     <div 
                       className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl border-4 border-white"
-                      onClick={() => {
-                        const params = new URLSearchParams();
-                        params.set('categories', cat.id);
-                        navigate(`/shop?${params.toString()}`);
-                      }}
+                      onClick={() => onCategorySelect(cat)}
                     >
                       <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-6 flex flex-col justify-end items-center text-center">
                          <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-4 group-hover:bg-white group-hover:text-black transition-all">
-                           <Star className="w-5 h-5 text-white group-hover:text-black" />
+                            {cat.icon ? (
+                              <Icon icon={cat.icon} className="w-6 h-6 text-white group-hover:text-black" />
+                            ) : (
+                              <Star className="w-5 h-5 text-white group-hover:text-black" />
+                            )}
                          </div>
                          <h3 className="text-white font-black italic uppercase tracking-tighter text-xs leading-none">{t(cat.locals.title)}</h3>
                       </div>

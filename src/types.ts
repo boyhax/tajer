@@ -53,6 +53,7 @@ export interface Category {
   parentId: string | null;
   isFeatured: boolean;
   icon: string;
+  slug: string;
   bannerImageUrl: string;
   title: string;
   description: string;

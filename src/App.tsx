@@ -140,6 +140,8 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+import { Icon } from '@iconify/react';
+import { useProductSearchParams } from './hooks/useProductSearchParams';
 import { uploadImage, STORAGE_PATHS } from './lib/storage';
 
 // --- Contexts ---
@@ -4416,7 +4418,7 @@ const AdminPanel = ({
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategory, setNewCategory] = useState<Partial<Category>>({
-    title: '', description: '', icon: 'Package', isFeatured: false, parentId: null, bannerImageUrl: '',
+    title: '', description: '', icon: 'ph:package-bold', slug: '', isFeatured: false, parentId: null, bannerImageUrl: '',
     locals: { title: { en: '', ar: '' }, description: { en: '', ar: '' } }
   });
 
@@ -4576,7 +4578,7 @@ const AdminPanel = ({
       setShowAddCategory(false);
       setEditingCategory(null);
       setNewCategory({ 
-        title: '', description: '', icon: 'Package', isFeatured: false, parentId: null, bannerImageUrl: '',
+        title: '', description: '', icon: 'ph:package-bold', slug: '', isFeatured: false, parentId: null, bannerImageUrl: '',
         locals: { title: { en: '', ar: '' }, description: { en: '', ar: '' } }
       });
     } catch (error) {
@@ -5866,7 +5868,10 @@ const AdminPanel = ({
             <button 
               onClick={() => {
                 setEditingCategory(null);
-                setNewCategory({ title: '', description: '', icon: 'Package', isFeatured: false, parentId: null, bannerImageUrl: '' });
+                setNewCategory({ 
+                  title: '', description: '', icon: 'ph:package-bold', slug: '', isFeatured: false, parentId: null, bannerImageUrl: '',
+                  locals: { title: { en: '', ar: '' }, description: { en: '', ar: '' } }
+                });
                 setShowAddCategory(true);
               }}
               className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
@@ -5878,12 +5883,19 @@ const AdminPanel = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {categories.map(cat => (
               <div key={cat.id} className="bg-white border border-gray-100 rounded-3xl p-6 flex gap-6 items-center shadow-sm relative group">
-                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
-                  <Package className="w-8 h-8" />
+                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400 overflow-hidden">
+                  {cat.icon ? (
+                    <Icon icon={cat.icon} className="w-8 h-8" />
+                  ) : (
+                    <Package className="w-8 h-8" />
+                  )}
                 </div>
                 <div className="flex-1">
                   <h3 className="font-bold text-lg">{t(cat.locals.title)}</h3>
-                  <p className="text-xs text-gray-400">{cat.parentId ? t({ en: 'Sub-category', ar: 'قسم فرعي' }) : t({ en: 'Main Category', ar: 'قسم رئيسي' })}</p>
+                  <div className="flex items-center gap-2">
+                    {cat.slug && <p className="text-[10px] bg-gray-100 px-2 py-0.5 rounded font-mono uppercase tracking-widest text-gray-400">{cat.slug}</p>}
+                    <p className="text-xs text-gray-400">{cat.parentId ? t({ en: 'Sub-category', ar: 'قسم فرعي' }) : t({ en: 'Main Category', ar: 'قسم رئيسي' })}</p>
+                  </div>
                 </div>
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
@@ -6275,12 +6287,17 @@ const AdminPanel = ({
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {['home', 'contact', 'policy'].map(id => (
+            {['home', 'shop', 'contact', 'policy'].map(id => (
               <div key={id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm group hover:shadow-xl transition-all relative">
                 <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
                   <FileText className="w-6 h-6 text-gray-400" />
                 </div>
-                <h3 className="text-xl font-bold uppercase tracking-tight mb-2">{id === 'home' ? t({ en: 'Home Page', ar: 'الصفحة الرئيسية' }) : id === 'contact' ? t({ en: 'Contact Us', ar: 'اتصل بنا' }) : t({ en: 'Policies', ar: 'السياسات' })}</h3>
+                <h3 className="text-xl font-bold uppercase tracking-tight mb-2">
+                  {id === 'home' ? t({ en: 'Home Page', ar: 'الصفحة الرئيسية' }) : 
+                   id === 'shop' ? t({ en: 'Shop Page', ar: 'صفحة المتجر' }) : 
+                   id === 'contact' ? t({ en: 'Contact Us', ar: 'اتصل بنا' }) : 
+                   t({ en: 'Policies', ar: 'السياسات' })}
+                </h3>
                 <p className="text-xs font-black text-gray-300 uppercase tracking-widest mb-6">System Page</p>
                 <button 
                   onClick={() => {
@@ -6782,14 +6799,18 @@ const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: 
   );
 
   if (!content) {
-    if (pageId === 'home') {
+    if (pageId === 'home' || pageId === 'shop') {
       return (
         <div className="py-20 text-center px-6">
-          <h1 className="text-4xl font-black italic tracking-tighter uppercase mb-4">{t({ en: 'Welcome to Shop', ar: 'مرحبا بك في المتجر' })}</h1>
-          <p className="text-gray-400 mb-8 max-w-md mx-auto">{t({ en: 'The home page content is currently empty. Visit the admin panel to customize it.', ar: 'محتوى الصفحة الرئيسية فارغ حالياً. قم بزيارة لوحة التحكم لتخصيصها.' })}</p>
-          <button onClick={() => onNavigate?.('shop')} className="px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all">
-            {t({ en: 'Start Shopping', ar: 'ابدأ التسوق' })}
-          </button>
+          <h1 className="text-4xl font-black italic tracking-tighter uppercase mb-4">
+            {pageId === 'home' ? t({ en: 'Welcome to Shop', ar: 'مرحبا بك في المتجر' }) : t({ en: 'Shop The Market', ar: 'تسوق من السوق' })}
+          </h1>
+          <p className="text-gray-400 mb-8 max-w-md mx-auto">{t({ en: 'This page content is currently empty. Visit the admin panel to customize it.', ar: 'محتوى هذه الصفحة فارغ حالياً. قم بزيارة لوحة التحكم لتخصيصها.' })}</p>
+          {pageId === 'home' && (
+            <button onClick={() => onNavigate?.('shop')} className="px-8 py-4 bg-black text-white rounded-full font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all">
+              {t({ en: 'Start Shopping', ar: 'ابدأ التسوق' })}
+            </button>
+          )}
         </div>
       );
     }
@@ -6872,9 +6893,10 @@ const FilterSidebar = ({
           {categories.map(c => (
             <button 
               key={c.id}
-              onClick={() => setSelectedCategoryId(c.id)}
-              className={`block text-sm ${selectedCategoryIds.includes(c.id) ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+              onClick={() => setSelectedCategoryId(c.slug)}
+              className={`flex items-center gap-2 text-sm transition-all ${selectedCategoryIds.includes(c.id) ? 'font-black text-black scale-105' : 'text-gray-500 hover:text-black'}`}
             >
+              {c.icon && <Icon icon={c.icon} className="w-4 h-4" />}
               {t(c.locals.title)}
             </button>
           ))}
@@ -7074,10 +7096,13 @@ const FilterDrawer = ({
               {categories.map(c => (
                 <button 
                   key={c.id}
-                  onClick={() => setSelectedCategoryId(c.id)}
+                  onClick={() => setSelectedCategoryId(c.slug)}
                   className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryIds.includes(c.id) ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
                 >
-                   <span className="font-bold text-sm tracking-tight">{t(c.locals?.title)}</span>
+                  <div className="flex items-center gap-3">
+                    {c.icon && <Icon icon={c.icon} className="w-5 h-5" />}
+                    <span className="font-bold text-sm tracking-tight">{t(c.locals?.title)}</span>
+                  </div>
                   {selectedCategoryIds.includes(c.id) && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
                 </button>
               ))}
@@ -7189,6 +7214,10 @@ function MainApp() {
     }
   });
 
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const setLang = async (l: 'en' | 'ar') => {
     setLangState(l);
     localStorage.setItem('kuzama_lang', l);
@@ -7200,76 +7229,50 @@ function MainApp() {
       }
     }
   };
-  // Shop Filters via URL
-  const searchQuery = searchParams.get('q') || '';
-  const setSearchQuery = (q: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (q) newParams.set('q', q);
-    else newParams.delete('q');
-    setSearchParams(newParams);
-  };
+  const { 
+    params: filterParams, 
+    updateParams, 
+    clearAllFilters,
+    setSearchQuery,
+    setCategorySlugs,
+    setSelectedBrand,
+    setPriceRange,
+    setSortOption,
+    setSelectedTagId
+  } = useProductSearchParams();
+
+  const searchQuery = filterParams.searchQuery;
+  const selectedBrand = filterParams.selectedBrand;
+  const minPrice = filterParams.minPrice;
+  const maxPrice = filterParams.maxPrice;
+  const priceRange: [number, number] = [minPrice, maxPrice];
+  const sortOption = filterParams.sortOption;
+  const selectedTagId = filterParams.selectedTagId;
 
   const selectedCategoryIds = useMemo(() => {
-    const ids: string[] = [];
-    const cat = searchParams.get('category');
-    if (cat) ids.push(cat);
-    const cats = searchParams.get('categories');
-    if (cats) {
-      cats.split(',').forEach(id => {
-        if (id && !ids.includes(id)) ids.push(id);
-      });
-    }
-    return ids;
-  }, [searchParams]);
+    return categories
+      .filter(c => filterParams.categorySlugs.includes(c.slug))
+      .map(c => c.id);
+  }, [categories, filterParams.categorySlugs]);
 
   const selectedCategoryId = selectedCategoryIds[0] || '';
 
-  const setSelectedCategoryId = (c: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (c) newParams.set('category', c);
-    else newParams.delete('category');
-    // Also clear categories plural if we are setting a specific singular one for simplicity in UI toggle
-    newParams.delete('categories');
-    setSearchParams(newParams);
-  };
-
-  const selectedBrand = searchParams.get('brand') || '';
-  const setSelectedBrand = (b: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (b) newParams.set('brand', b);
-    else newParams.delete('brand');
-    setSearchParams(newParams);
-  };
-
-  const minPrice = Number(searchParams.get('minPrice')) || 0;
-  const maxPrice = Number(searchParams.get('maxPrice')) || 10000;
-  const priceRange: [number, number] = [minPrice, maxPrice];
-  
-  const setPriceRange = (range: [number, number]) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (range[0] > 0) newParams.set('minPrice', range[0].toString());
-    else newParams.delete('minPrice');
-    if (range[1] < 10000) newParams.set('maxPrice', range[1].toString());
-    else newParams.delete('maxPrice');
-    setSearchParams(newParams);
-  };
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const sortOption = searchParams.get('sort') || 'newest';
-  const setSortOption = (s: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('sort', s);
-    setSearchParams(newParams);
-  };
-
-  const selectedTagId = searchParams.get('tag') || '';
-  const setSelectedTagId = (t_id: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (t_id) newParams.set('tag', t_id);
-    else newParams.delete('tag');
-    setSearchParams(newParams);
+  const setSelectedCategoryId = (idOrSlug: string) => {
+    if (!idOrSlug) {
+      setCategorySlugs([]);
+      return;
+    }
+    
+    // Find category to get slug
+    const category = categories.find(c => c.id === idOrSlug || c.slug === idOrSlug);
+    if (category) {
+      const slugs = [...filterParams.categorySlugs];
+      if (slugs.includes(category.slug)) {
+        setCategorySlugs(slugs.filter(s => s !== category.slug));
+      } else {
+        setCategorySlugs([...slugs, category.slug]);
+      }
+    }
   };
 
   const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
@@ -7696,14 +7699,7 @@ function MainApp() {
                   <Route path="/shop" element={
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                       <div className="max-w-7xl mx-auto px-4 md:px-6">
-                        <div className="py-12 md:py-20 text-center">
-                          <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter uppercase leading-none mb-6">
-                            {t({ en: 'THE MARKET', ar: 'السوق' })}
-                          </h1>
-                          <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-xs md:text-sm max-w-lg mx-auto">
-                            {t({ en: 'Discover curated quality from top stores across the region', ar: 'اكتشف الجودة برعاية من أفضل المتاجر في المنطقة' })}
-                          </p>
-                        </div>
+                        <PuckPage pageId="shop" onNavigate={setCurrentPage} />
                         {/* ... (rest of search/filter/grid logic) ... */}
                         {/* I will keep the actual JSX here but it's long. I'll use a placeholder and then fill it if needed, or just do the full replacement if it fits. */}
                         {/* Re-including the shop logic for completeness */}
@@ -7769,7 +7765,7 @@ function MainApp() {
                                   setSelectedBrand(''); 
                                   setSelectedTagId(''); 
                                   setSearchQuery(''); 
-                                  setPriceRange([0, 10000]);
+                                  setPriceRange(0, 10000);
                                 }} className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"><X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}</button>
                               )}
                             </div>
@@ -7801,7 +7797,7 @@ function MainApp() {
                                 setSelectedBrand(''); 
                                 setSelectedTagId(''); 
                                 setSearchQuery(''); 
-                                setPriceRange([0, 10000]);
+                                setPriceRange(0, 10000);
                               }} className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all">{t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}</button>
                             </div>
                           )}
