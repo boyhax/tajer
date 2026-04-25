@@ -28,6 +28,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { cn } from './lib/utils';
 import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod, AddressDetails } from './types';
 import { handleFirestoreError, OperationType } from './lib/error';
 import { config } from './lib/config';
@@ -47,6 +48,7 @@ import {
   CheckCircle2,
   CheckCircle,
   AlertCircle,
+  BadgeDollarSign,
   ArrowLeft,
   Search,
   Filter,
@@ -88,6 +90,7 @@ import {
   Building2,
   Info,
   Map as MapIcon,
+  ArrowUpDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polygon, Rectangle } from 'react-leaflet';
@@ -95,6 +98,21 @@ import L from 'leaflet';
 import { Puck, Render } from "@measured/puck";
 import "@measured/puck/dist/index.css";
 import { config as puckConfig } from "./lib/puck";
+import { 
+  Carousel, 
+  CarouselContent, 
+  CarouselItem, 
+  CarouselNext, 
+  CarouselPrevious 
+} from "./components/ui/Carousel";
+import { 
+  Drawer, 
+  DrawerContent, 
+  DrawerHeader, 
+  DrawerTitle, 
+  DrawerTrigger,
+  DrawerClose
+} from "./components/ui/Drawer";
 
 // Fix Leaflet marker icon issue
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -274,7 +292,11 @@ export const SettingsContext = createContext<{
     restrictDeliveryToRegions: false,
     supportedAddressModes: ['normal', 'map'],
     appName: config.name,
-    appDescription: config.description
+    appDescription: config.description,
+    currency: {
+      code: 'AED',
+      symbol: { en: 'AED', ar: 'د.إ' }
+    }
   },
   updateAppSettings: async () => {}
 });
@@ -982,6 +1004,7 @@ const ProductCard = ({
   const { toggleWishlist, isInWishlist } = useContext(WishlistContext);
   const { addToCart } = useContext(CartContext);
   const { user } = useContext(AuthContext);
+  const { appSettings } = useContext(SettingsContext);
 
   // Determine variant: prop > category-based > global config
   let variant = propVariant || config.productCard.variant;
@@ -1042,7 +1065,7 @@ const ProductCard = ({
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-1">
               <span className="font-black text-lg md:text-2xl tracking-tighter">{product.price}</span>
-              <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase tracking-widest">{t(config.currency.symbol)}</span>
+              <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
 
             <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest">
@@ -1098,7 +1121,7 @@ const ProductCard = ({
           <h4 className="text-[9px] md:text-[10px] font-black truncate tracking-tight">{t(product.locals.name)}</h4>
           <div className="flex items-center gap-1">
             <span className="text-[11px] md:text-[13px] font-black">{product.price}</span>
-            <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(config.currency.symbol)}</span>
+            <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
           </div>
         </div>
 
@@ -1135,7 +1158,7 @@ const ProductCard = ({
       
       <div className="absolute top-2 right-2 md:top-3 md:right-3 flex flex-col gap-1 md:gap-2 z-10">
         <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-[14px] font-black text-white shadow-xl tracking-widest">
-          {product.price} {t(config.currency.symbol)}
+          {product.price} {t(appSettings.currency?.symbol || config.currency.symbol)}
         </div>
         {user && (
           <button 
@@ -1188,6 +1211,7 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
   const { t } = useContext(LanguageContext);
   const { toggleWishlist, isInWishlist } = useContext(WishlistContext);
   const { user } = useContext(AuthContext);
+  const { appSettings } = useContext(SettingsContext);
   
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -1239,11 +1263,11 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
         
         <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-10">
           <div className="text-xl md:text-4xl font-black">
-            {discountedPrice.toFixed(2)} {t(config.currency.symbol)}
+            {discountedPrice.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}
           </div>
           {hasDiscount && (
             <div className="text-sm md:text-2xl text-gray-400 line-through font-bold">
-              {currentPrice.toFixed(2)} {t(config.currency.symbol)}
+              {currentPrice.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}
             </div>
           )}
         </div>
@@ -1384,6 +1408,7 @@ const WishlistPage = ({ onSelectProduct }: { onSelectProduct: (p: Product) => vo
 const CartPage = ({ onCheckout }: { onCheckout: () => void }) => {
   const { cart, removeFromCart, total } = useContext(CartContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
 
   if (cart.length === 0) {
     return (
@@ -1410,7 +1435,7 @@ const CartPage = ({ onCheckout }: { onCheckout: () => void }) => {
             <div className="flex-1">
               <h3 className="font-bold text-xs md:text-xl leading-tight line-clamp-1">{t(item.locals.name)}</h3>
               <p className="text-[9px] md:text-sm text-gray-500">{item.brand}</p>
-              <div className="mt-0.5 md:mt-2 font-semibold text-[10px] md:text-base">{item.price} {t(config.currency.symbol)} × {item.quantity}</div>
+              <div className="mt-0.5 md:mt-2 font-semibold text-[10px] md:text-base">{item.price} {t(appSettings.currency?.symbol || config.currency.symbol)} × {item.quantity}</div>
             </div>
             <button 
               onClick={() => removeFromCart(item.id)}
@@ -1424,7 +1449,7 @@ const CartPage = ({ onCheckout }: { onCheckout: () => void }) => {
       <div className="bg-gray-50 rounded-xl md:rounded-3xl p-3 md:p-8">
         <div className="flex justify-between items-center mb-3 md:mb-8">
           <span className="text-gray-500 font-medium text-[10px] md:text-base">{t({ en: 'Subtotal', ar: 'المجموع الفرعي' })}</span>
-          <span className="text-base md:text-2xl font-bold">{total.toFixed(2)} {t(config.currency.symbol)}</span>
+          <span className="text-base md:text-2xl font-bold">{total.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
         </div>
         <button 
           onClick={onCheckout}
@@ -1872,7 +1897,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: total,
-          currency: config.currency.code,
+          currency: appSettings.currency?.code || config.currency.code,
           customerName: user?.displayName || '',
           customerEmail: user?.email || '',
           orderId: orderRef.id
@@ -2040,13 +2065,13 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
               {cart.map(item => (
                 <div key={item.id} className="flex justify-between text-xs">
                   <span className="text-gray-500">{t(item.locals.name)} × {item.quantity}</span>
-                  <span className="font-bold">{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
+                  <span className="font-bold">{(item.price * item.quantity).toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
                 </div>
               ))}
             </div>
             <div className="border-t pt-4 flex justify-between items-center">
               <span className="font-bold text-lg">{t({ en: 'Total', ar: 'المجموع' })}</span>
-              <span className="font-bold text-lg text-emerald-600">{total.toFixed(2)} {t(config.currency.symbol)}</span>
+              <span className="font-bold text-lg text-emerald-600">{total.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
           </div>
         </div>
@@ -2808,6 +2833,7 @@ const DriverRegistration = () => {
 const StoreDashboard = () => {
   const { user, profile } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [products, setProducts] = useState<Product[]>([]);
   const [store, setStore] = useState<Store | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -2989,7 +3015,7 @@ const StoreDashboard = () => {
             <div className="flex-1">
               <h4 className="font-bold">{t(product.locals.name)}</h4>
               <p className="text-xs text-gray-500">{product.brand}</p>
-              <p className="font-bold mt-1">{product.price} {t(config.currency.symbol)}</p>
+              <p className="font-bold mt-1">{product.price} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
               <div className="mt-2 flex items-center gap-2">
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                   product.status === 'published' ? 'bg-green-100 text-green-600' :
@@ -5127,7 +5153,7 @@ const AdminPanel = ({
                 <div className="flex-1">
                   <h3 className="font-bold text-lg">{t(p.locals.name)}</h3>
                   <p className="text-sm text-gray-400 font-medium">{p.brand}</p>
-                  <p className="font-bold text-black mt-2">{p.price} {t(config.currency.symbol)}</p>
+                  <p className="font-bold text-black mt-2">{p.price} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                       p.status === 'published' ? 'bg-green-100 text-green-600' :
@@ -5904,6 +5930,61 @@ const AdminPanel = ({
               </div>
             </div>
 
+            {/* Currency Settings */}
+            <div className="space-y-6 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <BadgeDollarSign className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Currency Settings', ar: 'إعدادات العملة' })}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Currency Code', ar: 'رمز العملة' })}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., AED, USD"
+                    value={appSettings.currency?.code || ''}
+                    onChange={(e) => updateAppSettings({ 
+                      currency: { 
+                        ...(appSettings.currency || { symbol: { en: '', ar: '' } }), 
+                        code: e.target.value.toUpperCase() 
+                      } 
+                    })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Symbol (English)', ar: 'الرمز (إنجليزي)' })}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., AED, $"
+                    value={appSettings.currency?.symbol?.en || ''}
+                    onChange={(e) => updateAppSettings({ 
+                      currency: { 
+                        ...(appSettings.currency || { code: '' }), 
+                        symbol: { ...(appSettings.currency?.symbol || { ar: '' }), en: e.target.value }
+                      } 
+                    })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Symbol (Arabic)', ar: 'الرمز (عربي)' })}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., د.إ"
+                    value={appSettings.currency?.symbol?.ar || ''}
+                    onChange={(e) => updateAppSettings({ 
+                      currency: { 
+                        ...(appSettings.currency || { code: '' }), 
+                        symbol: { ...(appSettings.currency?.symbol || { en: '' }), ar: e.target.value }
+                      } 
+                    })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Social Links */}
             <div className="space-y-6 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold flex items-center gap-2">
@@ -6118,7 +6199,7 @@ const AdminPanel = ({
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Order', ar: 'الطلب' })} #{order.id.slice(-6)}</p>
-                    <p className="font-bold text-lg">{order.totalAmount} {t(config.currency.symbol)}</p>
+                    <p className="font-bold text-lg">{order.totalAmount} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Status', ar: 'الحالة' })}</p>
@@ -6416,6 +6497,7 @@ const TrackingDrawer = ({
 const OrdersPage = () => {
   const { user } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [orders, setOrders] = useState<Order[]>([]);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
@@ -6451,13 +6533,13 @@ const OrdersPage = () => {
               {order.items.map((item, idx) => (
                 <div key={idx} className="flex justify-between text-[9px] md:text-sm text-gray-600">
                   <span>{item.name} × {item.quantity}</span>
-                  <span>{(item.price * item.quantity).toFixed(2)} {t(config.currency.symbol)}</span>
+                  <span>{(item.price * item.quantity).toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
                 </div>
               ))}
             </div>
             <div className="mt-1.5 md:mt-4 pt-1.5 md:pt-4 border-t flex justify-between items-center">
               <span className="text-gray-400 text-[8px] md:text-xs">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
-              <span className="font-bold text-xs md:text-lg">{order.totalAmount.toFixed(2)} {t(config.currency.symbol)}</span>
+              <span className="font-bold text-xs md:text-lg">{order.totalAmount.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
             
             {order.deliveryStatus === 'picked_up' && order.driverId && (
@@ -6573,6 +6655,7 @@ const FilterSidebar = ({
   setSelectedTagId: (id: string) => void
 }) => {
   const { t } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
 
   return (
     <div className="w-64 flex-shrink-0 space-y-8 pr-8 border-r border-gray-100 hidden md:block">
@@ -6670,8 +6753,8 @@ const FilterSidebar = ({
             className="w-full accent-black"
           />
           <div className="text-[10px] text-gray-400 flex justify-between">
-            <span>0 {t(config.currency.symbol)}</span>
-            <span>1000+ {t(config.currency.symbol)}</span>
+            <span>0 {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+            <span>1000+ {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
           </div>
         </div>
       </div>
@@ -6899,7 +6982,11 @@ export default function App() {
     restrictDeliveryToRegions: false,
     supportedAddressModes: ['normal', 'map'],
     appName: config.name,
-    appDescription: config.description
+    appDescription: config.description,
+    currency: {
+      code: 'AED',
+      symbol: { en: 'AED', ar: 'د.إ' }
+    }
   });
 
   const setLang = async (l: 'en' | 'ar') => {
@@ -7331,121 +7418,201 @@ export default function App() {
                       )}
 
                       {currentPage === 'shop' && (
-                        <div className="px-1 md:px-4">
-                          {/* Search Bar Section */}
-                          <div className="py-1 md:py-8 flex justify-center">
-                            <div className="relative w-full max-w-2xl text-center">
-                              <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase mb-8">{t({ en: 'Browse Everything', ar: 'تصفح كل شيء' })}</h1>
-                              <div className="relative group">
-                                <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400 group-focus-within:text-black transition-colors" />
-                                <input 
-                                  type="text"
-                                  placeholder={t({ en: 'Search products, categories...', ar: 'ابحث عن منتجات، فئات...' })}
-                                  value={searchQuery}
-                                  onChange={(e) => setSearchQuery(e.target.value)}
-                                  className="w-full pl-16 pr-8 py-6 bg-white border border-gray-100 rounded-[2rem] shadow-xl focus:ring-4 focus:ring-black/5 transition-all outline-none text-lg font-medium"
-                                />
-                              </div>
-                            </div>
-                            <button 
-                              onClick={() => setShowFilterDrawer(true)}
-                              className="md:hidden ml-4 p-5 bg-black text-white rounded-2xl shadow-xl self-end mb-1"
-                            >
-                              <Filter className="w-6 h-6" />
-                            </button>
+                        <div className="max-w-7xl mx-auto px-4 md:px-6">
+                          {/* Hero / Header Section */}
+                          <div className="py-12 md:py-20 text-center">
+                            <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter uppercase leading-none mb-6">
+                              {t({ en: 'THE MARKET', ar: 'السوق' })}
+                            </h1>
+                            <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-xs md:text-sm max-w-lg mx-auto">
+                              {t({ en: 'Discover curated quality from top stores across the region', ar: 'اكتشف الجودة برعاية من أفضل المتاجر في المنطقة' })}
+                            </p>
                           </div>
 
-                          {/* Horizontal Categories */}
-                          <div className="py-8 md:py-12 overflow-hidden">
-                            <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-hide px-2 snap-x">
-                              <button 
-                                onClick={() => setSelectedCategoryId('')}
-                                className={`px-10 py-5 rounded-[1.5rem] transition-all whitespace-nowrap text-sm font-black uppercase tracking-widest shadow-xl snap-start ${
-                                  selectedCategoryId === '' ? 'bg-black text-white ring-8 ring-black/5' : 'bg-white text-gray-400 hover:bg-gray-50'
-                                }`}
-                              >
-                                {t({ en: 'All Items', ar: 'الكل' })}
-                              </button>
-                              {categories.map((cat) => (
-                                <button 
-                                  key={cat.id}
-                                  onClick={() => setSelectedCategoryId(cat.id)}
-                                  className={`px-10 py-5 rounded-[1.5rem] transition-all whitespace-nowrap text-sm font-black uppercase tracking-widest shadow-xl snap-start ${
-                                    selectedCategoryId === cat.id ? 'bg-black text-white ring-8 ring-black/5' : 'bg-white text-gray-400 hover:bg-gray-50'
-                                  }`}
+                          {/* Unified Sticky Header */}
+                          <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl -mx-4 px-4 md:mx-0 md:px-0 border-b border-gray-100 shadow-sm mb-12">
+                            <div className="max-w-4xl mx-auto py-3 space-y-4">
+                              {/* Search & Actions */}
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1 group">
+                                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within:text-black transition-colors" />
+                                  <input 
+                                    type="text"
+                                    placeholder={t({ en: 'Search...', ar: 'بحث...' })}
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-full focus:bg-white focus:border-gray-100 focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-tight"
+                                  />
+                                </div>
+                                <div className="flex gap-1.5">
+                                  <Drawer>
+                                    <DrawerTrigger asChild>
+                                      <button 
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="flex items-center justify-center w-9 h-9 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
+                                      >
+                                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                                      </button>
+                                    </DrawerTrigger>
+                                    <DrawerContent className="max-w-md w-full">
+                                      <DrawerHeader>
+                                        <DrawerTitle>{t({ en: 'Refine Selection', ar: 'تحسين الاختيار' })}</DrawerTitle>
+                                      </DrawerHeader>
+                                      <div className="p-8 space-y-10 overflow-y-auto max-h-[70vh]">
+                                        <div>
+                                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">{t({ en: 'By Category', ar: 'حسب الفئة' })}</h4>
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <button 
+                                              onClick={() => setSelectedCategoryId('')}
+                                              className={`py-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase ${!selectedCategoryId ? 'border-black bg-black text-white' : 'border-gray-50 flex items-center justify-center gap-2 hover:border-gray-200 px-4'}`}
+                                            >
+                                              {t({ en: 'All Items', ar: 'الكل' })}
+                                            </button>
+                                            {categories.map(cat => (
+                                              <button 
+                                                key={cat.id}
+                                                onClick={() => setSelectedCategoryId(cat.id)}
+                                                className={`py-4 px-4 rounded-2xl border-2 transition-all font-bold text-xs uppercase truncate text-center ${selectedCategoryId === cat.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                                              >
+                                                {t(cat.name)}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-6">{t({ en: 'By Brand', ar: 'حسب الماركة' })}</h4>
+                                          <div className="flex flex-wrap gap-2">
+                                            {brands.map(brand => (
+                                              <button 
+                                                key={brand}
+                                                onClick={() => setSelectedBrand(selectedBrand === brand ? '' : brand)}
+                                                className={`px-6 py-3 rounded-full border-2 transition-all font-bold text-[10px] uppercase ${selectedBrand === brand ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                                              >
+                                                {brand}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        <DrawerClose asChild>
+                                          <button className="w-full py-6 bg-emerald-500 text-white rounded-[2.5rem] font-black uppercase tracking-widest shadow-2xl shadow-emerald-500/30 hover:scale-[1.02] transition-all">
+                                            {t({ en: 'Show Results', ar: 'عرض النتائج' })}
+                                          </button>
+                                        </DrawerClose>
+                                      </div>
+                                    </DrawerContent>
+                                  </Drawer>
+
+                                  <button 
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="flex items-center justify-center w-9 h-9 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0"
+                                  >
+                                    <ArrowUpDown className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Categories Carousel */}
+                              {categories && categories.length > 0 && (
+                                <Carousel 
+                                  opts={{ align: "start", loop: false, dragFree: true }}
+                                  className="w-full"
+                                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                                  key={`cat-carousel-${categories.length}`}
                                 >
-                                  {t(cat.name)}
-                                </button>
-                              ))}
+                                  <CarouselContent className="-ms-2">
+                                    <CarouselItem className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
+                                      <button 
+                                        onClick={() => setSelectedCategoryId('')}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${!selectedCategoryId ? 'ring-2 ring-emerald-500' : ''}`}
+                                      >
+                                        <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${!selectedCategoryId ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
+                                           <ShoppingBag className="w-4 h-4" />
+                                        </div>
+                                      </button>
+                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${!selectedCategoryId ? 'text-black' : 'text-gray-400'}`}>
+                                        {t({ en: 'All', ar: 'الكل' })}
+                                      </p>
+                                    </CarouselItem>
+                                    {categories.map(cat => (
+                                      <CarouselItem key={cat.id} className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
+                                        <button 
+                                          onClick={() => setSelectedCategoryId(cat.id)}
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryId === cat.id ? 'ring-2 ring-emerald-500' : ''}`}
+                                        >
+                                          {cat.bannerImageUrl && <img src={cat.bannerImageUrl} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.name)} />}
+                                          <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryId === cat.id ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}>
+                                          </div>
+                                        </button>
+                                        <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryId === cat.id ? 'text-black' : 'text-gray-400'}`}>
+                                          {t(cat.name)}
+                                        </p>
+                                      </CarouselItem>
+                                    ))}
+                                  </CarouselContent>
+                                </Carousel>
+                              )}
                             </div>
+                          </div>
+
+                          {/* Stats & Active Filters */}
+                          <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12 border-t border-gray-100 pt-8">
+                             <div className="flex items-center gap-4">
+                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">
+                                  {t({ en: 'Currently Viewing', ar: 'تشاهد الآن' })}:
+                                </span>
+                                <div className="flex flex-wrap gap-2">
+                                   <span className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-emerald-100">
+                                     {filteredProducts.length} {t({ en: 'Products', ar: 'منتجات' })}
+                                   </span>
+                                   {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && (
+                                     <button 
+                                       onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }}
+                                       className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"
+                                     >
+                                       <X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}
+                                     </button>
+                                   )}
+                                </div>
+                             </div>
+                             
+                             <div className="flex items-center gap-4 text-[10px] font-black text-gray-300 uppercase tracking-widest">
+                                <span>{t({ en: 'Secure Checkout', ar: 'دفع آمن' })}</span>
+                                <div className="w-1 h-1 bg-gray-200 rounded-full" />
+                                <span>{t({ en: 'Express Delivery', ar: 'توصيل سريع' })}</span>
+                             </div>
                           </div>
 
                           {/* Product Grid Area */}
-                          <div className="flex gap-12">
-                            <FilterSidebar 
-                              categories={categories}
-                              brands={brands}
-                              selectedCategoryId={selectedCategoryId}
-                              setSelectedCategoryId={setSelectedCategoryId}
-                              selectedBrand={selectedBrand}
-                              setSelectedBrand={setSelectedBrand}
-                              priceRange={priceRange}
-                              setPriceRange={setPriceRange}
-                              tags={tags}
-                              selectedTagId={selectedTagId}
-                              setSelectedTagId={setSelectedTagId}
-                            />
-                            <div className="flex-1">
-                              {/* Promoted Tags (Banners) - Inside Shop */}
-                              {!(selectedCategoryId || selectedBrand || selectedTagId || searchQuery) && tags.filter(t => t.isPromoted).length > 0 && (
-                                <div className="mb-16 overflow-hidden">
-                                  <div className="flex gap-8 overflow-x-auto no-scrollbar pb-8 snap-x snap-mandatory">
-                                    {tags.filter(t => t.isPromoted).map(tag => (
-                                      <motion.div 
-                                        key={tag.id} 
-                                        className="relative h-96 min-w-[500px] md:min-w-[800px] rounded-[48px] overflow-hidden group cursor-pointer shadow-2xl flex-shrink-0 snap-center"
-                                        onClick={() => setSelectedTagId(tag.id)}
-                                      >
-                                        <img 
-                                          src={tag.bannerImage || undefined} 
-                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
-                                          referrerPolicy="no-referrer"
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent flex flex-col justify-end p-12">
-                                          <h3 className="text-white text-6xl font-black tracking-tighter uppercase italic mb-4">{t(tag.title)}</h3>
-                                          {tag.discountType !== 'none' && (
-                                            <div className="bg-white text-black px-8 py-3 rounded-full w-fit font-black text-2xl shadow-2xl">
-                                              {tag.discountType === 'product' ? `${tag.discountValue}% OFF` : `${tag.discountValue} OFF`}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </motion.div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="flex items-center justify-between mb-8">
-                                <span className="text-xs text-gray-400 font-black uppercase tracking-[0.2em]">
-                                  {t({ en: 'Showing', ar: 'عرض' })} {filteredProducts.length} {t({ en: 'results', ar: 'نتائج' })}
-                                </span>
-                                {(selectedCategoryId || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
-                                  <button onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); setPriceRange([0, 10000]); }} className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
-                                    <X className="w-4 h-4" /> {t({ en: 'Reset', ar: 'إعادة تعيين' })}
-                                  </button>
-                                )}
+                          <div className="relative">
+                            {filteredProducts.length > 0 ? (
+                              <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-x-12 md:gap-y-20">
+                                {filteredProducts.map(product => (
+                                  <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
+                                ))}
                               </div>
-
-                              {filteredProducts.length > 0 ? (
-                                <ProductGrid products={filteredProducts} onSelect={setSelectedProduct} />
-                              ) : (
-                                <div className="py-32 text-center bg-gray-50 rounded-[48px] border-2 border-dashed border-gray-200">
-                                  <Search className="w-16 h-16 text-gray-200 mx-auto mb-6" />
-                                  <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">{t({ en: 'No matching items', ar: 'لا توجد عناصر مطابقة' })}</h3>
-                                  <p className="text-gray-500 font-medium">{t({ en: 'Try adjusting your filters or search terms.', ar: 'حاول تعديل الفلاتر أو كلمات البحث.' })}</p>
+                            ) : (
+                              <motion.div 
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="py-40 text-center bg-gray-50 rounded-[4rem] border-4 border-dashed border-gray-100"
+                              >
+                                <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
+                                  <Search className="w-10 h-10 text-gray-200" />
                                 </div>
-                              )}
-                            </div>
+                                <h3 className="text-3xl font-black italic uppercase tracking-tighter mb-4">{t({ en: 'Nothing Found', ar: 'لم يتم العثور على شيء' })}</h3>
+                                <p className="text-gray-400 font-medium max-w-sm mx-auto mb-10">{t({ en: 'Try adjusting your filters or search terms to find what you are looking for.', ar: 'حاول تعديل الفلاتر أو كلمات البحث للعثور على ما تبحث عنه.' })}</p>
+                                <button 
+                                  onClick={() => { setSelectedCategoryId(''); setSelectedBrand(''); setSelectedTagId(''); setSearchQuery(''); }}
+                                  className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all"
+                                >
+                                  {t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}
+                                </button>
+                              </motion.div>
+                            )}
                           </div>
                         </div>
                       )}

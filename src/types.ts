@@ -215,4 +215,8 @@ export interface AppSettings {
     snapchat?: string;
     tiktok?: string;
   };
+  currency?: {
+    code: string; // e.g., 'AED', 'USD'
+    symbol: LocalizedString; // e.g., { en: 'AED', ar: 'د.إ' }
+  };
 }
