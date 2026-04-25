@@ -1,6 +1,4 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
 import { LocalizedString } from '../types';
 
 interface LanguageContextType {
@@ -26,13 +24,6 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
     localStorage.setItem('kuzama_lang', l);
     document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = l;
-    // Persist language preference to Firebase if user is logged in
-    const user = auth.currentUser;
-    if (user) {
-      updateDoc(doc(db, 'users', user.uid), { language: l }).catch(
-        err => console.error('Failed to save language preference:', err)
-      );
-    }
   };
 
   useEffect(() => {

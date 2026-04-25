@@ -67,36 +67,16 @@ export interface CartItem extends Product {
   quantity: number;
 }
 
-export interface OrderPricing {
-  subtotal: number;
-  discountAmount: number;
-  deliveryCost: number;
-  taxAmount: number;
-  total: number;
-  currency: string;
-}
-
 export interface Order {
   id: string;
   userId: string;
   items: CartItem[];
   totalAmount: number;
-  /** Server-authoritative total (set by backend, never trusted from client) */
-  verifiedTotal?: number;
-  subtotal?: number;
-  deliveryCost?: number;
-  taxAmount?: number;
-  discountAmount?: number;
-  status: 'pending' | 'confirmed' | 'paid' | 'failed' | 'shipped' | 'delivered';
+  status: 'pending' | 'paid' | 'failed' | 'shipped' | 'delivered';
   deliveryStatus?: 'pending' | 'assigned' | 'picked_up' | 'delivered';
   paymentMethod: 'online' | 'cod';
-  gateway?: 'myfatoorah' | 'thuwani' | 'amwalpay' | 'cod';
-  gatewayPaymentId?: string;
-  deliveryMethodId?: string;
-  destinationRegionId?: string;
-  storeRegionId?: string;
-  driverId?: string;
-  storeId?: string;
+  driverId?: string; // ID of the assigned driver
+  storeId?: string; // ID of the store (if applicable)
   paymentId?: string;
   createdAt: any;
   customerInfo: {
@@ -207,9 +187,5 @@ export interface AppSettings {
   paymentMethods: {
     online: boolean;
     cod: boolean;
-    gateways?: ('myfatoorah' | 'thuwani' | 'amwalpay')[];
   };
-  activeGateway?: 'myfatoorah' | 'thuwani' | 'amwalpay';
-  taxRate?: number;
-  storeRegionId?: string;
 }

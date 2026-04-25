@@ -18,7 +18,6 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
-import { useLanguage } from './LanguageContext';
 
 interface AuthContextType {
   user: User | null;
@@ -47,14 +46,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const { lang, setLang } = useLanguage();
-
-  // Sync language from user profile on login
-  useEffect(() => {
-    if (profile?.language && profile.language !== lang) {
-      setLang(profile.language);
-    }
-  }, [profile?.language]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
