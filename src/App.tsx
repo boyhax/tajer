@@ -45,6 +45,7 @@ import {
   Package, 
   CreditCard, 
   Settings,
+  Type,
   LogOut,
   X,
   CheckCircle2,
@@ -2138,6 +2139,8 @@ const AddressDrawer = ({
   initialDetails?: AddressDetails,
   t: (ls: any) => string
 }) => {
+  const { user } = useContext(AuthContext);
+  const { appSettings } = useContext(SettingsContext);
   const [address, setAddress] = useState(initialAddress);
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(initialCoords);
   const [showMap, setShowMap] = useState(false);
@@ -2149,7 +2152,9 @@ const AddressDrawer = ({
     buildingNumber: '',
     floorNumber: '',
     apartmentNumber: '',
-    additionalInstructions: ''
+    additionalInstructions: '',
+    customerName: '',
+    customerPhone: ''
   });
 
   useEffect(() => {
@@ -2165,6 +2170,7 @@ const AddressDrawer = ({
   useEffect(() => {
     const regionName = regions.find(r => r.id === details.regionId)?.name || '';
     const parts = [
+      details.customerName ? `${details.customerName} (${details.customerPhone || ''})` : '',
       regionName,
       details.streetName ? `${t({ en: 'Street', ar: 'شارع' })}: ${details.streetName}` : '',
       details.buildingNumber ? `${t({ en: 'Building', ar: 'بناية' })}: ${details.buildingNumber}` : '',
@@ -2232,6 +2238,31 @@ const AddressDrawer = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {!user && appSettings.features?.guestCheckout && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Full Name (Mandatory)', ar: 'الاسم الكامل (إلزامي)' })}</label>
+                    <input 
+                      type="text" 
+                      value={details.customerName || ''}
+                      onChange={(e) => setDetails({ ...details, customerName: e.target.value })}
+                      placeholder={t({ en: 'e.g. John Doe', ar: 'مثلاً زيد طارق' })}
+                      className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Phone Number (Mandatory)', ar: 'رقم الهاتف (إلزامي)' })}</label>
+                    <input 
+                      type="tel" 
+                      value={details.customerPhone || ''}
+                      onChange={(e) => setDetails({ ...details, customerPhone: e.target.value })}
+                      placeholder={t({ en: 'e.g. +971 50...', ar: 'مثلاً +971 50...' })}
+                      className="w-full p-4 bg-gray-50 rounded-2xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Region Selector */}
               <div>
                 <label className="text-[10px] font-bold uppercase text-gray-400 mb-1.5 block">{t({ en: 'Region (Mandatory)', ar: 'المنطقة (إلزامي)' })}</label>
@@ -2360,6 +2391,11 @@ const AddressDrawer = ({
             <div className="p-6 border-t border-gray-100 bg-gray-50/50">
               <button 
                 onClick={() => {
+                  if (!user && appSettings.features?.guestCheckout) {
+                    if (!details.customerName?.trim() || !details.customerPhone?.trim()) {
+                      return alert(t({ en: 'Please enter your name and phone number', ar: 'يرجى إدخال اسمك ورقم هاتفك' }));
+                    }
+                  }
                   if (!details.regionId) return alert(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
                   onSave(address, coords, coords ? 'map' : 'normal', details);
                   onClose();
@@ -2447,9 +2483,16 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
 
   const handlePayment = async () => {
     setCheckoutError(null);
-    if (!user) {
+    if (!user && !appSettings.features?.guestCheckout) {
       setCheckoutError(t({ en: 'Please sign in to checkout', ar: 'يرجى تسجيل الدخول لإتمام الشراء' }));
       return;
+    }
+
+    if (!user && appSettings.features?.guestCheckout) {
+      if (!addressDetails?.customerName || !addressDetails?.customerPhone) {
+         setCheckoutError(t({ en: 'Please provide your name and phone number in the shipping address formulation', ar: 'يرجى إدخال الاسم ورقم الهاتف في تفاصيل عنوان الشحن' }));
+         return;
+      }
     }
 
     const selectedMethod = deliveryMethods.find(m => m.id === selectedMethodId);
@@ -2477,7 +2520,11 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
     try {
       const isPreTransaction = paymentMethod === 'online' ? appSettings.paymentMethods.online.preTransaction : appSettings.paymentMethods.cod.preTransaction;
       const orderData = cleanObject({
-        userId: user.uid,
+        userId: user ? user.uid : null,
+        guestContact: user ? null : {
+          name: addressDetails?.customerName || '',
+          phone: addressDetails?.customerPhone || ''
+        },
         items: cart.map(item => ({
           id: item.id,
           name: t(item.locals.name),
@@ -2577,22 +2624,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       </AnimatePresence>
 
       <div className="space-y-6">
-        {/* Delivery Region & Method */}
+        {/* Delivery Method */}
         <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-6">
-          <div>
-            <label className="text-[10px] font-bold uppercase text-gray-400 mb-2 block">{t({ en: 'Delivery Region', ar: 'منطقة التوصيل' })}</label>
-            <select 
-              value={selectedRegionId}
-              onChange={(e) => setSelectedRegionId(e.target.value)}
-              className="w-full p-4 bg-gray-50 rounded-xl border border-gray-100 focus:ring-2 focus:ring-black text-sm outline-none font-bold"
-            >
-              <option value="">{t({ en: 'Select Region', ar: 'اختر المنطقة' })}</option>
-              {regions.map(region => (
-                <option key={region.id} value={region.id}>{region.name}</option>
-              ))}
-            </select>
-          </div>
-
           <div>
             <label className="text-[10px] font-bold uppercase text-gray-400 mb-3 block">{t({ en: 'Delivery Method', ar: 'طريقة التوصيل' })}</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3000,6 +3033,7 @@ const ProfilePage = ({
 }) => {
   const { user, profile, logout } = useContext(AuthContext);
   const { t, lang, setLang } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get('tab') as any) || 'info';
   const setActiveTab = (tab: string) => {
@@ -3136,7 +3170,7 @@ const ProfilePage = ({
         >
           {t({ en: 'Info', ar: 'المعلومات' })}
         </button>
-        {(profile.roles?.includes('store') || profile.roles?.includes('customer') || profile.roles?.includes('admin')) && (
+        {(profile.roles?.includes('store') || profile.roles?.includes('admin')) && appSettings.features?.marketplace && (
           <button 
             onClick={() => setActiveTab('store')}
             className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'store' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
@@ -3144,7 +3178,7 @@ const ProfilePage = ({
             {t({ en: 'Store', ar: 'المتجر' })}
           </button>
         )}
-        {(profile.roles?.includes('driver') || profile.roles?.includes('customer') || profile.roles?.includes('admin')) && (
+        {(profile.roles?.includes('driver') || profile.roles?.includes('admin')) && appSettings.features?.drivers && (
           <button 
             onClick={() => setActiveTab('driver')}
             className={`px-4 py-3 md:px-6 md:py-4 text-xs md:text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'driver' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
@@ -3208,6 +3242,18 @@ const ProfilePage = ({
                       <span className="text-sm font-medium">{t({ en: 'Go to Shopping Cart', ar: 'الذهاب إلى سلة التسوق' })}</span>
                       <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-black transition-all" />
                     </button>
+                    {appSettings.features?.marketplace && !profile.roles?.includes('store') && (
+                      <button onClick={() => setActiveTab('store')} className="w-full text-left p-3 hover:bg-gray-50 rounded-xl flex items-center justify-between group transition-all text-emerald-600">
+                        <span className="text-sm font-medium">{t({ en: 'Join as a Store', ar: 'انضم كمتجر' })}</span>
+                        <ChevronRight className="w-4 h-4 text-emerald-300 group-hover:text-emerald-600 transition-all" />
+                      </button>
+                    )}
+                    {appSettings.features?.drivers && !profile.roles?.includes('driver') && (
+                      <button onClick={() => setActiveTab('driver')} className="w-full text-left p-3 hover:bg-gray-50 rounded-xl flex items-center justify-between group transition-all text-blue-600">
+                        <span className="text-sm font-medium">{t({ en: 'Join as a Driver', ar: 'انضم كسائق' })}</span>
+                        <ChevronRight className="w-4 h-4 text-blue-300 group-hover:text-blue-600 transition-all" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <button 
@@ -3227,16 +3273,20 @@ const ProfilePage = ({
         {activeTab === 'store' && (
           (profile.roles?.includes('store') || profile.roles?.includes('admin')) ? (
             <StoreDashboard />
-          ) : (
+          ) : appSettings.features?.marketplace ? (
             <StoreRegistration />
+          ) : (
+            <div className="text-center p-12 bg-gray-50 rounded-2xl text-gray-400 font-bold">{t({ en: 'Marketplace feature is currently disabled.', ar: 'ميزة السوق المتعدد معطلة حالياً.' })}</div>
           )
         )}
 
         {activeTab === 'driver' && (
-          profile.roles?.includes('driver') ? (
+          (profile.roles?.includes('driver') || profile.roles?.includes('admin')) ? (
             <DriverDashboard />
-          ) : (
+          ) : appSettings.features?.drivers ? (
             <DriverRegistration />
+          ) : (
+            <div className="text-center p-12 bg-gray-50 rounded-2xl text-gray-400 font-bold">{t({ en: 'Drivers feature is currently disabled.', ar: 'ميزة السائقين معطلة حالياً.' })}</div>
           )
         )}
 
@@ -6645,6 +6695,97 @@ const AdminPanel = ({
               </div>
             </div>
 
+            {/* Splash Screen Settings */}
+            <div className="space-y-6 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Splash Screen Settings', ar: 'إعدادات شاشة البداية' })}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Splash Title (English)', ar: 'عنوان شاشة البداية (إنجليزي)' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.splashScreen?.title?.en || ''}
+                    placeholder={t({ en: 'Leave empty to use App Name', ar: 'اتركه فارغاً لاستخدام اسم التطبيق' })}
+                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', title: { ...appSettings.splashScreen?.title, en: e.target.value } } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Splash Title (Arabic)', ar: 'عنوان شاشة البداية (عربي)' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.splashScreen?.title?.ar || ''}
+                    placeholder={t({ en: 'Leave empty to use App Name', ar: 'اتركه فارغاً لاستخدام اسم التطبيق' })}
+                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', title: { ...appSettings.splashScreen?.title, ar: e.target.value } } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Animation Style', ar: 'نمط الحركة' })}</label>
+                  <select
+                    value={appSettings.splashScreen?.animation || 'fade'}
+                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', animation: e.target.value as any } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  >
+                    <option value="fade">Fade</option>
+                    <option value="slide-up">Slide Up</option>
+                    <option value="scale">Scale</option>
+                    <option value="bounce">Bounce</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Background Color', ar: 'لون الخلفية' })}</label>
+                  <div className="flex gap-4 items-center">
+                    <input
+                      type="color"
+                      value={appSettings.splashScreen?.backgroundColor || '#ffffff'}
+                      onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: e.target.value } })}
+                      className="w-14 h-14 rounded-xl cursor-pointer border-none"
+                    />
+                    <input
+                      type="text"
+                      value={appSettings.splashScreen?.backgroundColor || '#ffffff'}
+                      onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: e.target.value } })}
+                      className="flex-1 px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Font Settings */}
+            <div className="space-y-6 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Type className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Font Settings', ar: 'إعدادات الخط' })}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Font URL (@import/CSS)', ar: 'رابط الخط' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.font?.url || ''}
+                    placeholder="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap"
+                    onChange={(e) => updateAppSettings({ font: { ...appSettings.font, family: appSettings.font?.family || '', url: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Font Family', ar: 'اسم الخط' })}</label>
+                  <input
+                    type="text"
+                    value={appSettings.font?.family || ''}
+                    placeholder="'Tajawal', sans-serif"
+                    onChange={(e) => updateAppSettings({ font: { ...appSettings.font, url: appSettings.font?.url || '', family: e.target.value } })}
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
+                  />
+                  <p className="text-xs text-gray-500 mt-2 px-2">{t({ en: 'e.g., \'Inter\', sans-serif', ar: 'مثال: \'Tajawal\', sans-serif' })}</p>
+                </div>
+              </div>
+            </div>
+
             {/* Currency Settings */}
             <div className="space-y-6 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold flex items-center gap-2">
@@ -6790,6 +6931,82 @@ const AdminPanel = ({
                       <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.cod.preTransaction ? 'right-0.5' : 'left-0.5'}`} />
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <StoreIcon className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'Features', ar: 'الميزات' })}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <StoreIcon className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Marketplace', ar: 'السوق المتعدد' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Allow users to register as stores', ar: 'السماح للمستخدمين بالتسجيل كمتاجر' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => updateAppSettings({
+                      features: { 
+                        ...appSettings.features, 
+                        marketplace: !appSettings.features?.marketplace,
+                        drivers: appSettings.features?.drivers ?? false
+                      }
+                    })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.features?.marketplace ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.features?.marketplace ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+                
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Car className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Drivers', ar: 'السائقين' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Allow users to register as drivers', ar: 'السماح للمستخدمين بالتسجيل كسائقين' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => updateAppSettings({
+                      features: { 
+                        ...appSettings.features, 
+                        drivers: !appSettings.features?.drivers,
+                        marketplace: appSettings.features?.marketplace ?? false,
+                        guestCheckout: appSettings.features?.guestCheckout ?? false
+                      }
+                    })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.features?.drivers ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.features?.drivers ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <UserIcon className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Guest Checkout', ar: 'الطلب كزائر' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Allow unauthenticated users to place orders', ar: 'السماح للمستخدمين غير المسجلين بالطلب' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => updateAppSettings({
+                      features: { 
+                        ...appSettings.features, 
+                        guestCheckout: !appSettings.features?.guestCheckout,
+                        marketplace: appSettings.features?.marketplace ?? false,
+                        drivers: appSettings.features?.drivers ?? false
+                      }
+                    })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.features?.guestCheckout ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.features?.guestCheckout ? 'right-1' : 'left-1'}`} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -7845,6 +8062,8 @@ function MainApp() {
   const [appSettings, setAppSettings] = useState<AppSettings>({ 
     paymentMethods: { online: true, cod: true }, 
     whatsappOrders: { enabled: false, phoneNumber: '' },
+    features: { marketplace: false, drivers: false },
+    splashScreen: { animation: 'pulse' as any, backgroundColor: '#ffffff' },
     restrictDeliveryToRegions: false,
     supportedAddressModes: ['normal', 'map'],
     appName: config.name,
@@ -7854,6 +8073,38 @@ function MainApp() {
       symbol: { en: 'AED', ar: 'د.إ' }
     }
   });
+
+  useEffect(() => {
+    const fontUrl = appSettings?.font?.url;
+    const fontFamily = appSettings?.font?.family;
+
+    if (fontUrl) {
+      let link = document.getElementById('custom-font-link') as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'custom-font-link';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+      }
+      if (link.href !== fontUrl) {
+        link.href = fontUrl;
+      }
+    } else {
+      const link = document.getElementById('custom-font-link');
+      if (link) link.remove();
+    }
+
+    if (fontFamily) {
+      document.documentElement.style.setProperty('--font-sans', fontFamily);
+      document.documentElement.style.setProperty('--font-display', fontFamily);
+      // Fallback for Tailwind v4 or explicit override
+      document.body.style.fontFamily = fontFamily;
+    } else {
+      document.documentElement.style.removeProperty('--font-sans');
+      document.documentElement.style.removeProperty('--font-display');
+      document.body.style.fontFamily = '';
+    }
+  }, [appSettings?.font?.url, appSettings?.font?.family]);
 
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -8233,15 +8484,24 @@ function MainApp() {
   }), [user, profile, loading]);
 
   if (loading) {
+    let animationProps: any = { animate: { opacity: [0.5, 1, 0.5] }, transition: { repeat: Infinity, duration: 2 } };
+    
+    if (appSettings.splashScreen?.animation === 'scale') {
+      animationProps = { animate: { scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }, transition: { repeat: Infinity, duration: 2 } };
+    } else if (appSettings.splashScreen?.animation === 'bounce') {
+      animationProps = { animate: { y: [0, -20, 0] }, transition: { repeat: Infinity, duration: 1, ease: 'easeInOut' } };
+    } else if (appSettings.splashScreen?.animation === 'slide-up') {
+      animationProps = { animate: { y: [20, 0, 20], opacity: [0, 1, 0] }, transition: { repeat: Infinity, duration: 2 } };
+    }
+
     return (
-      <div className="h-screen flex items-center justify-center bg-white" style={{ backgroundColor: config.theme.background }}>
+      <div className="h-screen flex items-center justify-center bg-white" style={{ backgroundColor: appSettings.splashScreen?.backgroundColor || config.theme.background }}>
         <motion.div 
-          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ repeat: Infinity, duration: 2 }}
+          {...animationProps}
           className="text-4xl font-black italic tracking-tighter"
           style={{ color: config.theme.primary }}
         >
-          {t(appSettings.appName)}
+          {appSettings.splashScreen?.title?.en ? t(appSettings.splashScreen.title) : t(appSettings.appName)}
         </motion.div>
       </div>
     );

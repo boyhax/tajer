@@ -75,11 +75,17 @@ export interface AddressDetails {
   floorNumber?: string;
   apartmentNumber?: string;
   additionalInstructions?: string;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 export interface Order {
   id: string;
-  userId: string;
+  userId: string | null;
+  guestContact?: {
+    name: string;
+    phone: string;
+  };
   items: CartItem[];
   totalAmount: number;
   status: 'pending' | 'processing' | 'paid' | 'failed' | 'shipped' | 'delivered';
@@ -208,6 +214,11 @@ export interface AppSettings {
     enabled: boolean;
     phoneNumber: string; // The admin's WhatsApp number to redirect to
   };
+  features?: {
+    marketplace: boolean;
+    drivers: boolean;
+    guestCheckout?: boolean;
+  };
   restrictDeliveryToRegions: boolean;
   supportedAddressModes: ('normal' | 'map')[];
   appName?: LocalizedString;
@@ -223,5 +234,14 @@ export interface AppSettings {
   currency?: {
     code: string; // e.g., 'AED', 'USD'
     symbol: LocalizedString; // e.g., { en: 'AED', ar: 'د.إ' }
+  };
+  splashScreen?: {
+    title?: LocalizedString;
+    animation: 'fade' | 'slide-up' | 'scale' | 'bounce';
+    backgroundColor: string;
+  };
+  font?: {
+    url: string;
+    family: string;
   };
 }
