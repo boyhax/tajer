@@ -2144,6 +2144,7 @@ const AddressDrawer = ({
   const [address, setAddress] = useState(initialAddress);
   const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(initialCoords);
   const [showMap, setShowMap] = useState(false);
+  const [errorString, setErrorString] = useState('');
   const { regions } = useRegions();
 
   const [details, setDetails] = useState<AddressDetails>(initialDetails || {
@@ -2163,6 +2164,7 @@ const AddressDrawer = ({
       setCoords(initialCoords);
       if (initialDetails) setDetails(initialDetails);
       setShowMap(!!initialCoords && initialMode === 'map');
+      setErrorString('');
     }
   }, [isOpen, initialAddress, initialCoords, initialMode, initialDetails]);
 
@@ -2388,15 +2390,25 @@ const AddressDrawer = ({
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50 space-y-4">
+              {errorString && (
+                <div className="p-4 bg-red-50 text-red-600 rounded-2xl flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span className="text-sm font-bold leading-tight">{errorString}</span>
+                </div>
+              )}
               <button 
                 onClick={() => {
+                  setErrorString('');
                   if (!user && appSettings.features?.guestCheckout) {
                     if (!details.customerName?.trim() || !details.customerPhone?.trim()) {
-                      return alert(t({ en: 'Please enter your name and phone number', ar: 'يرجى إدخال اسمك ورقم هاتفك' }));
+                      return setErrorString(t({ en: 'Please enter your name and phone number', ar: 'يرجى إدخال اسمك ورقم هاتفك' }));
                     }
                   }
-                  if (!details.regionId) return alert(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
+                  if (!details.regionId) return setErrorString(t({ en: 'Please select a region', ar: 'يرجى اختيار منطقة' }));
+                  if (!details.streetName?.trim()) return setErrorString(t({ en: 'Please enter street name', ar: 'يرجى إدخال اسم الشارع' }));
+                  if (!details.buildingNumber?.trim()) return setErrorString(t({ en: 'Please enter building number', ar: 'يرجى إدخال رقم البناية' }));
+
                   onSave(address, coords, coords ? 'map' : 'normal', details);
                   onClose();
                 }}
@@ -2454,6 +2466,19 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       if (!savedAddress && profile.address) setAddress(profile.address);
       if (!savedLocation && profile.defaultLocation) setCoords(profile.defaultLocation);
       setAddressDetails(profile.addressDetails);
+    } else {
+      try {
+        const storedStr = localStorage.getItem('kuzama_guest_address_data');
+        if (storedStr) {
+          const stored = JSON.parse(storedStr);
+          if (stored.addressStr && !savedAddress) setAddress(stored.addressStr);
+          if (stored.coords && !savedLocation) setCoords(stored.coords);
+          if (stored.details) {
+            setAddressDetails(stored.details);
+            if (stored.details.regionId) setSelectedRegionId(stored.details.regionId);
+          }
+        }
+      } catch (e) {}
     }
   }, [profile, savedAddress, savedLocation]);
 
@@ -2537,8 +2562,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         deliveryMethodId: selectedMethodId,
         createdAt: serverTimestamp(),
         customerInfo: {
-          name: user?.displayName || '',
-          email: user?.email || '',
+          name: user?.displayName || addressDetails?.customerName || 'Guest',
+          email: user?.email || 'guest@example.com',
           address: address,
           addressDetails: addressDetails || null,
           destinationCoords: coords || null,
@@ -2555,7 +2580,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         }
         const orderIdPart = orderRef.id.slice(-6).toUpperCase();
         let waText = `*New Order #${orderIdPart}*\n\n`;
-        waText += `*Customer:* ${user.displayName || 'Guest'}\n`;
+        waText += `*Customer:* ${user?.displayName || addressDetails?.customerName || 'Guest'}\n`;
         waText += `*Address:* ${address}\n\n`;
         waText += `*Items:*\n`;
         cart.forEach(item => {
@@ -2584,8 +2609,8 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         body: JSON.stringify({
           amount: total,
           currency: appSettings.currency?.code || config.currency.code,
-          customerName: user?.displayName || '',
-          customerEmail: user?.email || '',
+          customerName: user?.displayName || addressDetails?.customerName || 'Guest',
+          customerEmail: user?.email || 'guest@example.com',
           orderId: orderRef.id
         })
       });
@@ -2692,11 +2717,30 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
             initialCoords={coords}
             initialDetails={addressDetails}
             t={t}
-            onSave={(newAddress, newCoords, _mode, details) => {
+            onSave={async (newAddress, newCoords, _mode, details) => {
               setAddress(newAddress);
               setCoords(newCoords);
               setAddressDetails(details);
               if (details?.regionId) setSelectedRegionId(details.regionId);
+
+              if (!user) {
+                localStorage.setItem('kuzama_guest_address_data', JSON.stringify({
+                  addressStr: newAddress,
+                  coords: newCoords,
+                  details: details
+                }));
+              } else if (profile) {
+                try {
+                  await updateDoc(doc(db, 'users', user.uid), cleanObject({
+                    address: newAddress,
+                    defaultLocation: newCoords,
+                    addressMode: _mode,
+                    addressDetails: details
+                  }));
+                } catch (e) {
+                  console.error('Failed to update address profile', e);
+                }
+              }
             }}
           />
         </div>

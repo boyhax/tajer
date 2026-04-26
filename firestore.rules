@@ -63,7 +63,7 @@ service cloud.firestore {
     }
 
     function isValidOrder(data) {
-      return data.userId == request.auth.uid &&
+      return (data.userId == null || (isSignedIn() && data.userId == request.auth.uid)) &&
              data.status in ['pending', 'processing', 'paid', 'failed', 'shipped', 'delivered'] &&
              data.paymentMethod in ['online', 'cod'] &&
              data.items is list && data.items.size() > 0 &&
@@ -117,9 +117,9 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidOrder(incoming()) && incoming().status == 'pending';
-      allow update: if isAdmin() || (isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'cancelled' && existing().status == 'pending');
+      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isValidOrder(incoming()) && incoming().status in ['pending', 'processing'];
+      allow update: if isAdmin() || (isSignedIn() && isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'cancelled' && existing().status == 'pending');
       allow delete: if isAdmin();
     }
 
