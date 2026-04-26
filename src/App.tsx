@@ -32,6 +32,7 @@ import { cn } from './lib/utils';
 import { Product, CartItem, Order, UserProfile, Category, LocalizedString, Store, Driver, AppNotification, AppSettings, ProductVariant, Tag, Region, DeliveryMethod, AddressDetails } from './types';
 import { handleFirestoreError, OperationType } from './lib/error';
 import { config } from './lib/config';
+import { getEnv } from './lib/env';
 import * as LucideIcons from 'lucide-react';
 import { 
   ShoppingBag, 
@@ -2040,7 +2041,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
           quantity: item.quantity
         })),
         totalAmount: total,
-        status: 'pending',
+        status: paymentMethod === 'cod' ? 'processing' : 'pending',
         paymentMethod,
         deliveryMethodId: selectedMethodId,
         createdAt: serverTimestamp(),
@@ -4431,7 +4432,11 @@ const AdminPanel = ({
   const [defaultStore, setDefaultStore] = useState<Store | null>(null);
 
   useEffect(() => {
-    if (!profile?.roles?.includes('admin')) return;
+    console.log("AdminPanel: Checking profile roles", profile?.roles);
+    if (!profile?.roles?.includes('admin')) {
+      console.warn("AdminPanel: User is not admin, roles:", profile?.roles);
+      return;
+    }
 
     const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('createdAt', 'desc')), (snap) => {
       setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
@@ -7340,6 +7345,12 @@ function MainApp() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const p = docSnap.data() as UserProfile;
+          // Ensure hardcoded admin has the role
+          if (u.email === 'facegoogl@gmail.com' && !p.roles?.includes('admin')) {
+            p.roles = Array.from(new Set([...(p.roles || []), 'admin']));
+            p.role = 'admin';
+            await updateDoc(docRef, { roles: p.roles, role: p.role });
+          }
           // Migration: if roles doesn't exist, create it from role
           if (!p.roles) {
             p.roles = [p.role || 'customer'];
@@ -7405,7 +7416,7 @@ function MainApp() {
 
   // Fetch all pages for admin
   useEffect(() => {
-    if (profile?.role === 'admin') {
+    if (profile?.roles?.includes('admin')) {
       const unsub = onSnapshot(collection(db, 'pages'), (snap) => {
         setAllPages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'pages'));
@@ -7555,25 +7566,9 @@ function MainApp() {
       // Verify payment on backend
       const verify = async () => {
         try {
-          const res = await fetch(`/api/payment/verify?paymentId=${paymentId}`);
+          const res = await fetch(`/api/payment/verify?paymentId=${paymentId}&orderId=${orderId}`);
           const data = await res.json();
           if (data.IsSuccess && data.Data.InvoiceStatus === 'Paid') {
-            await updateDoc(doc(db, 'orders', orderId), { status: 'paid', paymentId });
-            
-            // Create notification for user
-            await addDoc(collection(db, 'notifications'), {
-              userId: user.uid,
-              title: { en: 'Order Confirmed', ar: 'تم تأكيد الطلب' },
-              body: { 
-                en: `Your payment for order #${orderId.slice(0, 5)} was successful. We're processing it now!`, 
-                ar: `تمت عملية الدفع للطلب رقم #${orderId.slice(0, 5)} بنجاح. نحن نقوم بمعالجته الآن!` 
-              },
-              type: 'order_update',
-              read: false,
-              createdAt: serverTimestamp(),
-              metadata: { orderId }
-            });
-
             clearCart();
             setCurrentPage('orders');
             // Clean up URL params
@@ -7581,7 +7576,6 @@ function MainApp() {
             newParams.delete('paymentId');
             newParams.delete('orderId');
             setSearchParams(newParams);
-            alert('Payment Successful!');
           }
         } catch (error) {
           console.error('Verification failed', error);

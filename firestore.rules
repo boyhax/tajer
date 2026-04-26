@@ -43,10 +43,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    function isValidOrder(data) {
+      return data.userId == request.auth.uid &&
+             ((data.paymentMethod == 'online' && data.status == 'pending') || 
+              (data.paymentMethod == 'cod' && (data.status == 'pending' || data.status == 'processing'))) &&
+             data.totalAmount is number &&
+             data.totalAmount > 0;
+    }
+
     match /orders/{orderId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data);
       allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /regions/{regionId} {
