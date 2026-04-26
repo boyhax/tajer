@@ -5,78 +5,97 @@
       "description": "An item available for purchase in the store.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Unique product ID" },
-        "name": { "type": "string", "description": "Name of the product" },
-        "brand": { "type": "string", "description": "Brand of the product" },
-        "description": { "type": "string", "description": "Detailed description" },
-        "price": { "type": "number", "description": "Price in KWD" },
-        "categories": { "type": "array", "items": { "type": "string" }, "description": "Array of category IDs" },
-        "image": { "type": "string", "description": "URL to product image" },
-        "stock": { "type": "integer", "description": "Available quantity" },
-        "storeId": { "type": "string", "description": "ID of the store that added this product" },
-        "locals": { "type": "object", "description": "Localized name and description" },
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "discount": { "type": "number" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "image": { "type": "string" },
+        "stock": { "type": "integer" },
+        "storeId": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "review", "published", "rejected"] },
+        "adminMessage": { "type": "string" },
+        "hasVariants": { "type": "boolean" },
+        "variants": { "type": "array", "items": { "$ref": "#/entities/ProductVariant" } },
+        "rating": { "type": "number" },
+        "deliveryTime": { "type": "integer" },
+        "locals": {
+          "type": "object",
+          "properties": {
+            "name": { "$ref": "#/entities/LocalizedString" },
+            "description": { "$ref": "#/entities/LocalizedString" }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "brand", "price", "categories", "image", "locals"]
     },
-    "Category": {
-      "title": "Category",
-      "description": "A product category, potentially nested.",
+    "ProductVariant": {
+      "title": "ProductVariant",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "parentId": { "type": "string", "description": "ID of the parent category, or null" },
+        "name": { "$ref": "#/entities/LocalizedString" },
+        "price": { "type": "number" },
+        "stock": { "type": "integer" },
+        "attributes": { "type": "object" }
+      }
+    },
+    "LocalizedString": {
+      "title": "LocalizedString",
+      "type": "object",
+      "properties": {
+        "en": { "type": "string" },
+        "ar": { "type": "string" }
+      }
+    },
+    "Category": {
+      "title": "Category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "parentId": { "type": "string" },
         "isFeatured": { "type": "boolean" },
         "icon": { "type": "string" },
+        "slug": { "type": "string" },
         "bannerImageUrl": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
-        "locals": { "type": "object", "description": "Localized title and description" },
+        "locals": {
+          "type": "object",
+          "properties": {
+            "title": { "$ref": "#/entities/LocalizedString" },
+            "description": { "$ref": "#/entities/LocalizedString" }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "isFeatured", "locals"]
+      "required": ["title", "isFeatured", "locals", "slug"]
     },
     "Order": {
       "title": "Order",
-      "description": "A customer's purchase record.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string", "description": "ID of the customer" },
-        "items": {
-          "type": "array",
-          "items": { "type": "object" },
-          "description": "List of products in the order"
-        },
+        "userId": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "object" } },
         "totalAmount": { "type": "number" },
         "status": { "type": "string", "enum": ["pending", "processing", "paid", "failed", "shipped", "delivered"] },
-        "paymentMethod": { "type": "string", "enum": ["online", "cod"] },
         "deliveryStatus": { "type": "string", "enum": ["pending", "assigned", "picked_up", "delivered"] },
-        "driverId": { "type": "string", "description": "ID of the assigned driver" },
-        "storeId": { "type": "string", "description": "ID of the store" },
+        "paymentMethod": { "type": "string", "enum": ["online", "cod"] },
+        "driverId": { "type": "string" },
+        "storeId": { "type": "string" },
         "paymentId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "customerInfo": { 
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "email": { "type": "string" },
-            "address": { "type": "string" },
-            "destinationCoords": {
-              "type": "object",
-              "properties": {
-                "lat": { "type": "number" },
-                "lng": { "type": "number" }
-              }
-            }
-          }
-        }
+        "customerInfo": { "type": "object" }
       },
-      "required": ["userId", "items", "totalAmount", "status"]
+      "required": ["userId", "items", "totalAmount", "status", "paymentMethod"]
     },
     "User": {
       "title": "User",
-      "description": "User profile information.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
@@ -85,14 +104,18 @@
         "role": { "type": "string", "enum": ["admin", "customer", "store", "driver"] },
         "roles": { "type": "array", "items": { "type": "string" } },
         "address": { "type": "string" },
+        "addressMode": { "type": "string" },
+        "addressDetails": { "type": "object" },
+        "defaultLocation": { "type": "object" },
         "isVerified": { "type": "boolean" },
-        "photoURL": { "type": "string" }
+        "isBanned": { "type": "boolean" },
+        "language": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["uid", "email", "role", "roles"]
     },
     "Store": {
       "title": "Store",
-      "description": "Store information.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -103,7 +126,9 @@
         "logoUrl": { "type": "string" },
         "bannerUrl": { "type": "string" },
         "isVerified": { "type": "boolean" },
+        "status": { "type": "string" },
         "isDefault": { "type": "boolean" },
+        "adminMessage": { "type": "string" },
         "locals": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -111,27 +136,27 @@
     },
     "Driver": {
       "title": "Driver",
-      "description": "Driver information.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
         "vehicleInfo": { "type": "string" },
         "isVerified": { "type": "boolean" },
-        "status": { "type": "string", "enum": ["available", "busy", "offline"] },
+        "status": { "type": "string" },
+        "currentLocation": { "type": "object" },
+        "locals": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "vehicleInfo", "isVerified"]
     },
     "AppNotification": {
       "title": "AppNotification",
-      "description": "A notification for a user.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
-        "title": { "type": "object" },
-        "body": { "type": "object" },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "body": { "$ref": "#/entities/LocalizedString" },
         "type": { "type": "string", "enum": ["order_update", "promotion", "system"] },
         "read": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -141,7 +166,6 @@
     },
     "WishlistItem": {
       "title": "WishlistItem",
-      "description": "A product saved by a user for later.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -153,38 +177,24 @@
     },
     "Region": {
       "title": "Region",
-      "description": "A geographical area for delivery.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "type": { "type": "string", "enum": ["geozone", "rectangle"] },
-        "coordinates": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "lat": { "type": "number" },
-              "lng": { "type": "number" }
-            }
-          }
-        },
+        "coordinates": { "type": "array", "items": { "type": "object" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "type", "coordinates"]
     },
     "DeliveryMethod": {
       "title": "DeliveryMethod",
-      "description": "A method for delivering products with a cost matrix.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
-        "priceMatrix": {
-          "type": "object",
-          "description": "Mapping from source region to destination region with a cost."
-        },
+        "priceMatrix": { "type": "object" },
         "isDefault": { "type": "boolean" },
         "isPublished": { "type": "boolean" },
         "categories": { "type": "array", "items": { "type": "string" } },
@@ -194,99 +204,56 @@
     },
     "Tag": {
       "title": "Tag",
-      "description": "A tag for categorizing products.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "name": { "type": "string" },
+        "title": { "$ref": "#/entities/LocalizedString" },
+        "icon": { "type": "string" },
+        "bannerImage": { "type": "string" },
         "isPublic": { "type": "boolean" },
         "isPromoted": { "type": "boolean" },
+        "discountType": { "type": "string" },
+        "discountValue": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "isPublic"]
+      "required": ["title", "isPublic"]
     },
     "AppSettings": {
       "title": "AppSettings",
-      "description": "Global application settings.",
       "type": "object",
       "properties": {
-        "paymentMethods": {
-          "type": "object",
-          "properties": {
-            "cod": { "type": "boolean" },
-            "online": { "type": "boolean" }
-          }
-        },
-        "maintenanceMode": { "type": "boolean" }
+        "paymentMethods": { "type": "object" },
+        "restrictDeliveryToRegions": { "type": "boolean" },
+        "supportedAddressModes": { "type": "array", "items": { "type": "string" } },
+        "appName": { "$ref": "#/entities/LocalizedString" },
+        "appDescription": { "$ref": "#/entities/LocalizedString" },
+        "socialLinks": { "type": "object" },
+        "currency": { "type": "object" }
       }
     },
     "Page": {
       "title": "Page",
-      "description": "A dynamic page content managed via Puck editor with multi-language support.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "description": "Page slug or ID (e.g., 'home', 'contact')" },
-        "body": {
-          "type": "object",
-          "properties": {
-            "en": { "type": "object", "description": "Puck editor JSON content for English" },
-            "ar": { "type": "object", "description": "Puck editor JSON content for Arabic" }
-          },
-          "description": "Localized page content"
-        },
+        "id": { "type": "string" },
+        "body": { "type": "object" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "body"]
     }
   },
   "firestore": {
-    "/products/{productId}": {
-      "schema": "Product",
-      "description": "Collection of all products."
-    },
-    "/orders/{orderId}": {
-      "schema": "Order",
-      "description": "Collection of all orders."
-    },
-    "/users/{userId}": {
-      "schema": "User",
-      "description": "User profile documents."
-    },
-    "/stores/{storeId}": {
-      "schema": "Store",
-      "description": "Collection of all stores."
-    },
-    "/drivers/{driverId}": {
-      "schema": "Driver",
-      "description": "Collection of all drivers."
-    },
-    "/notifications/{notificationId}": {
-      "schema": "AppNotification",
-      "description": "Collection of all notifications."
-    },
-    "/wishlist/{wishlistId}": {
-      "schema": "WishlistItem",
-      "description": "Collection of all wishlist items."
-    },
-    "/regions/{regionId}": {
-      "schema": "Region",
-      "description": "Collection of all regions."
-    },
-    "/deliveryMethods/{deliveryMethodId}": {
-      "schema": "DeliveryMethod",
-      "description": "Collection of all delivery methods."
-    },
-    "/tags/{tagId}": {
-      "schema": "Tag",
-      "description": "Collection of product tags."
-    },
-    "/settings/{settingId}": {
-      "schema": "AppSettings",
-      "description": "Global settings documents."
-    },
-    "/pages/{pageId}": {
-      "schema": "Page",
-      "description": "CMS pages managed by Puck."
-    }
+    "/products/{productId}": { "schema": "Product", "description": "Collection of all products." },
+    "/orders/{orderId}": { "schema": "Order", "description": "Collection of all orders." },
+    "/users/{userId}": { "schema": "User", "description": "User profile documents." },
+    "/stores/{storeId}": { "schema": "Store", "description": "Collection of all stores." },
+    "/drivers/{driverId}": { "schema": "Driver", "description": "Collection of all drivers." },
+    "/notifications/{notificationId}": { "schema": "AppNotification", "description": "Collection of all notifications." },
+    "/wishlist/{wishlistId}": { "schema": "WishlistItem", "description": "Collection of all wishlist items." },
+    "/regions/{regionId}": { "schema": "Region", "description": "Collection of all regions." },
+    "/deliveryMethods/{deliveryMethodId}": { "schema": "DeliveryMethod", "description": "Collection of all delivery methods." },
+    "/tags/{tagId}": { "schema": "Tag", "description": "Collection of product tags." },
+    "/settings/{settingId}": { "schema": "AppSettings", "description": "Global settings documents." },
+    "/pages/{pageId}": { "schema": "Page", "description": "CMS pages managed by Puck." }
   }
 }

@@ -21,6 +21,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { Icon } from "@iconify/react";
+import { AnimatePresence } from "motion/react";
 import { useProductSearchParams } from "../hooks/useProductSearchParams";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { VirtuosoGrid } from 'react-virtuoso';
@@ -31,7 +32,8 @@ import {
   ProductCard,
   ProductCardVariant,
   ExploreProducts,
-  ExploreProductsProps
+  ExploreProductsProps,
+  FilterDrawer
 } from "../App";
 import { Product, Store, Category, Tag } from "../types";
 import { config as appConfig } from "./config";
@@ -108,7 +110,9 @@ export type PuckConfig = {
     icon?: string;
     seeMoreLabel?: string;
     seeMorePath?: string;
-    layout: "grid" | "carousel";
+    layout: "grid" | "carousel" | "masonry" | "list";
+    columns?: number;
+    gapSize?: "none" | "small" | "medium" | "large";
     cardVariant?: ProductCardVariant;
     categoryIds: { id: string }[];
     defaultTagId?: string;
@@ -117,6 +121,7 @@ export type PuckConfig = {
     enableVirtualScroll?: boolean;
     limit: number;
     showFilters: boolean;
+    filterStyle?: 'drawer' | 'bar' | 'sidebar';
     enableSearch?: boolean;
     enableSort?: boolean;
     restrictToFiltered?: boolean;
@@ -128,6 +133,8 @@ export type PuckConfig = {
     seeMorePath?: string;
     layout: "grid" | "carousel";
     limit: number;
+    sizeScale?: "small" | "medium" | "large";
+    enableLoop?: boolean;
   };
   Space: {
     height: number;
@@ -214,8 +221,31 @@ export const config: Config<PuckConfig> = {
       },
       render: ({ showSearchBar = true, showFilterTrigger = true, showSortTrigger = true, placeholder = "Search..." }) => {
         const { t, lang } = useContext(LanguageContext);
-        const { categories, brands } = useContext(DataContext);
-        
+        const { categories, brands, tags } = useContext(DataContext);
+        const { params, setSearchQuery, setCategorySlugs, setSelectedBrand, setPriceRange, setSortOption, setSelectedTagId } = useProductSearchParams();
+        const { appSettings } = useContext(SettingsContext);
+        const [showFilters, setShowFilters] = useState(false);
+        const [showSort, setShowSort] = useState(false);
+
+        const activeCategorySlugs = params.categorySlugs;
+        const selectedCategoryIds = categories.filter(c => activeCategorySlugs.includes(c.slug)).map(c => c.id);
+
+        const handleCategoryToggle = (slug: string) => {
+          if (!slug) {
+            setCategorySlugs([]);
+            return;
+          }
+          const currentSlugs = params.categorySlugs;
+          const nextSlugs = currentSlugs.includes(slug) 
+            ? currentSlugs.filter((s: string) => s !== slug) 
+            : [...currentSlugs, slug];
+          setCategorySlugs(nextSlugs);
+        };
+
+        const handleTagToggle = (tagId: string) => {
+          setSelectedTagId(params.selectedTagId === tagId ? '' : tagId);
+        };
+
         return (
           <div className="py-4 space-y-4" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
             <div className="flex items-center gap-2">
@@ -225,81 +255,81 @@ export const config: Config<PuckConfig> = {
                   <input 
                     type="text"
                     placeholder={t(placeholder)}
+                    value={params.searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-full focus:bg-white focus:border-gray-100 focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] uppercase font-black tracking-widest placeholder:text-gray-400"
                   />
                 </div>
               )}
               <div className="flex gap-2">
                 {showFilterTrigger && (
-                  <Drawer>
-                    <DrawerTrigger asChild>
-                      <button 
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="flex items-center justify-center w-10 h-10 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
-                      >
-                        <SlidersHorizontal className="w-4 h-4" />
-                      </button>
-                    </DrawerTrigger>
-                    <DrawerContent className="max-w-md w-full">
-                      <DrawerHeader>
-                        <DrawerTitle>{t({ en: 'Filters', ar: 'الفلاتر' })}</DrawerTitle>
-                      </DrawerHeader>
-                      <div className="p-6 space-y-8">
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">{t({ en: 'Categories', ar: 'الفئات' })}</h4>
-                          <div className="flex flex-wrap gap-2">
-                             {categories.map(cat => (
-                               <button key={cat.id} className="px-4 py-2 rounded-full border border-gray-100 text-[10px] font-bold uppercase transition-all hover:bg-gray-50">
-                                 {t(cat.locals.title)}
-                               </button>
-                             ))}
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">{t({ en: 'Brands', ar: 'العلامات التجارية' })}</h4>
-                          <div className="flex flex-wrap gap-2">
-                             {brands.map(brand => (
-                               <button key={brand} className="px-4 py-2 rounded-full border border-gray-100 text-[10px] font-bold uppercase transition-all hover:bg-gray-50">
-                                 {brand}
-                               </button>
-                             ))}
-                          </div>
-                        </div>
-                        <DrawerClose asChild>
-                          <button className="w-full py-5 bg-black text-white rounded-[2rem] font-black uppercase tracking-widest mt-8">
-                            {t({ en: 'Apply Filters', ar: 'تطبيق الفلاتر' })}
-                          </button>
-                        </DrawerClose>
-                      </div>
-                    </DrawerContent>
-                  </Drawer>
+                  <button 
+                    onClick={() => setShowFilters(true)}
+                    className="flex items-center justify-center w-10 h-10 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </button>
                 )}
                 {showSortTrigger && (
-                  <Drawer>
-                    <DrawerTrigger asChild>
-                      <button 
-                        onPointerDown={(e) => e.stopPropagation()}
-                        className="flex items-center justify-center w-10 h-10 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0"
-                      >
-                        <ArrowUpDown className="w-4 h-4" />
-                      </button>
-                    </DrawerTrigger>
-                    <DrawerContent>
-                       <DrawerHeader>
-                         <DrawerTitle>{t({ en: 'Sort By', ar: 'ترتيب حسب' })}</DrawerTitle>
-                       </DrawerHeader>
-                       <div className="p-6 space-y-4">
-                         {['Latest', 'Price: Low to High', 'Price: High to Low', 'A-Z'].map(s => (
-                           <button key={s} className="w-full p-6 text-left hover:bg-gray-50 rounded-2xl font-black uppercase tracking-widest text-xs transition-all border border-gray-50">
-                             {s}
-                           </button>
-                         ))}
-                       </div>
-                    </DrawerContent>
-                  </Drawer>
+                  <button 
+                    onClick={() => setShowSort(true)}
+                    className="flex items-center justify-center w-10 h-10 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0"
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                  </button>
                 )}
               </div>
             </div>
+
+            {showFilters && (
+              <FilterDrawer 
+                onClose={() => setShowFilters(false)}
+                categories={categories}
+                selectedCategoryIds={selectedCategoryIds}
+                setSelectedCategoryId={handleCategoryToggle}
+                brands={brands}
+                selectedBrand={params.selectedBrand}
+                setSelectedBrand={setSelectedBrand}
+                priceRange={[params.minPrice, params.maxPrice]}
+                setPriceRange={setPriceRange}
+                currency={appSettings.currency || '$'}
+                sortOption={params.sortOption}
+                setSortOption={setSortOption}
+                tags={tags}
+                selectedTagId={params.selectedTagId}
+                setSelectedTagId={handleTagToggle}
+              />
+            )}
+            
+            <AnimatePresence>
+              {showSort && (
+                <Drawer open={true} onOpenChange={(o) => !o && setShowSort(false)}>
+                  <DrawerContent>
+                    <DrawerHeader>
+                      <DrawerTitle>{t({ en: 'Sort By', ar: 'ترتيب حسب' })}</DrawerTitle>
+                    </DrawerHeader>
+                    <div className="p-6 space-y-3 pb-20">
+                      {[
+                        { id: 'newest', label: { en: 'Newest Arrivals', ar: 'الأحدث وصولاً' } },
+                        { id: 'price-low', label: { en: 'Price: Low to High', ar: 'السعر: من الأقل للأعلى' } },
+                        { id: 'price-high', label: { en: 'Price: High to Low', ar: 'السعر: من الأعلى للأقل' } },
+                      ].map(opt => (
+                        <button 
+                          key={opt.id}
+                          onClick={() => {
+                            setSortOption(opt.id);
+                            setShowSort(false);
+                          }}
+                          className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${params.sortOption === opt.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                        >
+                          <span className="font-bold text-sm tracking-tight">{t(opt.label)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </DrawerContent>
+                </Drawer>
+              )}
+            </AnimatePresence>
           </div>
         );
       }
@@ -539,8 +569,19 @@ export const config: Config<PuckConfig> = {
           type: "radio", 
           options: [
             { label: "Grid", value: "grid" },
-            { label: "Carousel", value: "carousel" }
+            { label: "Carousel", value: "carousel" },
+            { label: "List", value: "list" }
           ] 
+        },
+        columns: { type: "number" },
+        gapSize: {
+          type: "select",
+          options: [
+            { label: "None", value: "none" },
+            { label: "Small", value: "small" },
+            { label: "Medium", value: "medium" },
+            { label: "Large", value: "large" }
+          ]
         },
         cardVariant: {
           type: "select",
@@ -560,12 +601,26 @@ export const config: Config<PuckConfig> = {
         enableVirtualScroll: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         limit: { type: "number" },
         showFilters: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
+        filterStyle: {
+          type: "select",
+          options: [
+            { label: "Drawer", value: "drawer" },
+            { label: "Bar", value: "bar" },
+            { label: "Sidebar", value: "sidebar" }
+          ]
+        },
         enableSearch: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         enableSort: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         restrictToFiltered: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] }
       },
       render: (props: ExploreProductsProps) => {
-        return <ExploreProducts {...props} />;
+        // Ensure useUrlParams is true by default for better cross-component sync
+        const useUrlParams = props.useUrlParams !== undefined ? props.useUrlParams : true;
+        return (
+          <div id="shop-explore">
+            <ExploreProducts {...props} useUrlParams={useUrlParams} />
+          </div>
+        );
       }
     },
     CategoriesExplore: {
@@ -581,9 +636,24 @@ export const config: Config<PuckConfig> = {
             { label: "Carousel", value: "carousel" },
           ]
         },
+        sizeScale: {
+          type: "select",
+          options: [
+            { label: "Small", value: "small" },
+            { label: "Medium", value: "medium" },
+            { label: "Large", value: "large" },
+          ]
+        },
+        enableLoop: {
+          type: "radio",
+          options: [
+            { label: "Yes", value: true },
+            { label: "No", value: false },
+          ]
+        },
         limit: { type: "number" }
       },
-      render: ({ title, description, seeMoreLabel, seeMorePath, layout, limit }) => {
+      render: ({ title, description, seeMoreLabel, seeMorePath, layout, limit, sizeScale = "medium", enableLoop = false }) => {
         const { categories, loading } = useContext(DataContext);
         const { t, lang } = useContext(LanguageContext);
         const navigate = useNavigate();
@@ -594,20 +664,13 @@ export const config: Config<PuckConfig> = {
         const displayed = categories.filter(c => c.isFeatured).slice(0, limit || 6);
 
         const onCategorySelect = (cat: Category) => {
-          const slugs = [...filterParams.categorySlugs];
-          let updatedSlugs: string[] = [];
+          const slugToUse = cat.slug || cat.id;
+          const currentSlugs = filterParams.categorySlugs;
+          const nextSlugs = currentSlugs.includes(slugToUse) 
+            ? currentSlugs.filter((s: string) => s !== slugToUse) 
+            : [...currentSlugs, slugToUse];
           
-          if (slugs.includes(cat.slug)) {
-            updatedSlugs = slugs.filter(s => s !== cat.slug);
-          } else {
-            updatedSlugs = [...slugs, cat.slug];
-          }
-
-          if (window.location.pathname === '/shop') {
-            setCategorySlugs(updatedSlugs);
-          } else {
-            navigate(`/shop?categories=${updatedSlugs.join(',')}`);
-          }
+          setCategorySlugs(nextSlugs);
         };
  
         return (
@@ -636,58 +699,82 @@ export const config: Config<PuckConfig> = {
               <div className="w-full">
                  {displayed.length > 0 && (
                    <Carousel 
-                    opts={{ align: "start", loop: displayed.length > 5, dragFree: true }}
+                    opts={{ align: "start", loop: enableLoop, dragFree: true }}
                     className="w-full"
                     dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                    key={`cat-explore-carousel-${displayed.map(c => c.id).join(',')}`}
+                    key={`cat-explore-carousel-${displayed.map(c => c.id).join(',')}-${enableLoop}-${sizeScale}-${filterParams.categorySlugs.join(',')}`}
                   >
                     <CarouselContent>
-                      {displayed.map(cat => (
-                        <CarouselItem key={cat.id} className="basis-1/3 md:basis-1/4 lg:basis-1/6 xl:basis-[12.5%]">
-                           <div 
-                             className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl h-full border-4 border-white"
-                             onClick={() => onCategorySelect(cat)}
-                           >
-                            <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end items-center text-center">
-                               <div className="w-8 h-8 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-2 group-hover:bg-white group-hover:text-black transition-all">
-                                 {cat.icon ? (
-                                   <Icon icon={cat.icon} className="w-5 h-5 text-white group-hover:text-black" />
-                                 ) : (
-                                   <Star className="w-4 h-4 text-white group-hover:text-black" />
-                                 )}
-                               </div>
-                               <h3 className="text-white font-black italic uppercase tracking-tighter text-[10px] leading-none">{t(cat.locals.title)}</h3>
+                      {displayed.map(cat => {
+                        let itemBasis = "basis-1/3 md:basis-1/4 lg:basis-1/6 xl:basis-[12.5%]";
+                        let iconSize = "w-8 h-8";
+                        let innerIconSize = "w-5 h-5";
+                        let textSize = "text-[10px]";
+
+                        const isActive = filterParams.categorySlugs.includes(cat.slug) || filterParams.categorySlugs.includes(cat.id);
+                        const categoryTitle = cat.locals?.title || cat.title;
+
+                        if (sizeScale === "small") {
+                          itemBasis = "basis-1/4 md:basis-1/6 lg:basis-[12.5%] xl:basis-[10%]";
+                          textSize = "text-[8px]";
+                        } else if (sizeScale === "large") {
+                          itemBasis = "basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5";
+                          textSize = "text-xs";
+                        }
+
+                        return (
+                          <CarouselItem key={cat.id} className={itemBasis}>
+                             <div 
+                               className={`relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl h-full border-4 transition-all duration-300 ${isActive ? 'border-black scale-105 ring-4 ring-black/20 z-10 shadow-black/30' : 'border-white hover:border-gray-100'}`}
+                               onClick={() => onCategorySelect(cat)}
+                             >
+                              <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(categoryTitle)} />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 flex flex-col justify-end items-center text-center">
+                                 <h3 className={`text-white font-black italic uppercase tracking-tighter ${textSize} leading-none`}>{t(categoryTitle)}</h3>
+                              </div>
                             </div>
-                          </div>
-                        </CarouselItem>
-                      ))}
+                          </CarouselItem>
+                        );
+                      })}
                     </CarouselContent>
                   </Carousel>
                  )}
               </div>
             ) : (
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10 gap-6">
-                {displayed.map(cat => (
-                  <div key={cat.id}>
-                    <div 
-                      className="relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl border-4 border-white"
-                      onClick={() => onCategorySelect(cat)}
-                    >
-                      <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.locals.title)} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-6 flex flex-col justify-end items-center text-center">
-                         <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mb-4 group-hover:bg-white group-hover:text-black transition-all">
-                            {cat.icon ? (
-                              <Icon icon={cat.icon} className="w-6 h-6 text-white group-hover:text-black" />
-                            ) : (
-                              <Star className="w-5 h-5 text-white group-hover:text-black" />
-                            )}
-                         </div>
-                         <h3 className="text-white font-black italic uppercase tracking-tighter text-xs leading-none">{t(cat.locals.title)}</h3>
+              <div className={
+                sizeScale === "small" 
+                  ? "grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-4"
+                  : sizeScale === "large"
+                    ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8 gap-8"
+                    : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10 gap-6"
+              }>
+                {displayed.map(cat => {
+                   const isActive = filterParams.categorySlugs.includes(cat.slug) || filterParams.categorySlugs.includes(cat.id);
+                   const categoryTitle = cat.locals?.title || cat.title;
+                   let iconSize = "w-10 h-10";
+                   let innerIconSize = "w-6 h-6";
+                   let textSize = "text-xs";
+
+                   if (sizeScale === "small") {
+                     textSize = "text-[9px]";
+                   } else if (sizeScale === "large") {
+                     textSize = "text-sm";
+                   }
+
+                   return (
+                    <div key={cat.id}>
+                      <div 
+                        className={`relative aspect-square rounded-full overflow-hidden group cursor-pointer shadow-xl border-4 transition-all duration-300 ${isActive ? 'border-black scale-105 ring-4 ring-black/20 z-10 shadow-black/30' : 'border-white hover:border-gray-100'}`}
+                        onClick={() => onCategorySelect(cat)}
+                      >
+                        <img src={cat.bannerImageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(categoryTitle)} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-6 flex flex-col justify-end items-center text-center">
+                           <h3 className={`text-white font-black italic uppercase tracking-tighter ${textSize} leading-none`}>{t(categoryTitle)}</h3>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                   );
+                })}
               </div>
             )}
           </div>

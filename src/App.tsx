@@ -976,16 +976,6 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
         <span className="text-[7px] font-bold uppercase">{t({ en: 'Shop', ar: 'المتجر' })}</span>
       </button>
 
-      {user && (
-        <button 
-          onClick={() => onNavigate('wishlist')}
-          className={`flex flex-col items-center gap-0.5 ${currentPage === 'wishlist' ? 'text-black' : 'text-gray-400'}`}
-        >
-          <Heart className={`w-[18px] h-[18px] ${currentPage === 'wishlist' ? 'fill-current' : ''}`} />
-          <span className="text-[7px] font-bold uppercase">{t({ en: 'Wishlist', ar: 'الأمنيات' })}</span>
-        </button>
-      )}
-
       <button 
         onClick={() => onNavigate('cart')}
         className={`relative flex flex-col items-center gap-0.5 ${currentPage === 'cart' ? 'text-black' : 'text-gray-400'}`}
@@ -1032,7 +1022,9 @@ export interface ExploreProductsProps {
   icon?: string;
   seeMoreLabel?: string | LocalizedString;
   seeMorePath?: string;
-  layout?: 'grid' | 'carousel';
+  layout?: 'grid' | 'carousel' | 'masonry' | 'list';
+  columns?: number;
+  gapSize?: 'none' | 'small' | 'medium' | 'large';
   cardVariant?: ProductCardVariant;
   categoryIds?: { id: string }[];
   defaultTagId?: string;
@@ -1041,6 +1033,7 @@ export interface ExploreProductsProps {
   enableVirtualScroll?: boolean;
   limit?: number;
   showFilters?: boolean;
+  filterStyle?: 'drawer' | 'bar' | 'sidebar';
   enableSearch?: boolean;
   enableSort?: boolean;
   restrictToFiltered?: boolean;
@@ -1049,14 +1042,17 @@ export interface ExploreProductsProps {
 
 export const ExploreProducts = ({ 
   title, description, image, icon, seeMoreLabel, seeMorePath, 
-  layout = 'grid', cardVariant = 'default', categoryIds = [], defaultTagId, defaultSearch, 
-  useUrlParams = false, enableVirtualScroll = false, limit, 
-  showFilters = false, enableSearch = false, enableSort = false,
+  layout = 'grid', columns = 4, gapSize = 'medium',
+  cardVariant = 'default', categoryIds = [], defaultTagId, defaultSearch, 
+  useUrlParams = true, enableVirtualScroll = false, limit, 
+  showFilters = false, filterStyle = 'drawer',
+  enableSearch = false, enableSort = false,
   restrictToFiltered = false,
   onSelectProduct: externalOnSelect
 }: ExploreProductsProps) => {
-  const { products, categories, tags, loading, onSelectProduct: dataContextOnSelect } = useContext(DataContext);
+  const { products, categories, tags, brands, loading, onSelectProduct: dataContextOnSelect } = useContext(DataContext);
   const { t, lang } = useContext(LanguageContext);
+  const { appSettings } = useContext(SettingsContext);
   const navigate = useNavigate();
   
   const { 
@@ -1064,13 +1060,17 @@ export const ExploreProducts = ({
     setSearchQuery: setUrlSearch,
     setCategorySlugs: setUrlCategorySlugs,
     setSortOption: setUrlSort,
-    setSelectedTagId: setUrlTag
+    setSelectedTagId: setUrlTag,
+    setSelectedBrand: setUrlBrand,
+    setPriceRange: setUrlPrice
   } = useProductSearchParams();
 
   const [internalCategorySlugs, setInternalCategorySlugs] = useState<string[]>([]);
   const [internalSearch, setInternalSearch] = useState(defaultSearch || '');
   const [internalTag, setInternalTag] = useState(defaultTagId || '');
   const [internalSort, setInternalSort] = useState('newest');
+  const [internalBrand, setInternalBrand] = useState('');
+  const [internalPriceRange, setInternalPriceRange] = useState<[number, number]>([0, 10000]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
   if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Fetching Products...</div>;
@@ -1079,24 +1079,40 @@ export const ExploreProducts = ({
   const activeSearch = useUrlParams ? filterParams.searchQuery : internalSearch;
   const activeTag = useUrlParams ? filterParams.selectedTagId : internalTag;
   const activeSort = useUrlParams ? filterParams.sortOption : internalSort;
+  const activeBrand = useUrlParams ? filterParams.selectedBrand : internalBrand;
+  const activePriceRange = useUrlParams ? [filterParams.minPrice, filterParams.maxPrice] : internalPriceRange;
 
   const activeCategoryIds = useMemo(() => {
     return categories
-      .filter(c => activeCategorySlugs.includes(c.slug))
+      .filter(c => activeCategorySlugs.includes(c.slug) || activeCategorySlugs.includes(c.id))
       .map(c => c.id);
   }, [categories, activeCategorySlugs]);
 
   const restrictedProducts = products.filter(p => {
-    const matchesCategoryBase = categoryIds.length === 0 || categoryIds.some(c => p.categories.includes(c.id));
-    const matchesTagBase = !defaultTagId || p.tags.includes(defaultTagId);
+    const matchesCategoryBase = categoryIds.length === 0 || (p.categories && categoryIds.some(c => p.categories.includes(c.id)));
+    const matchesTagBase = !defaultTagId || (p.tags && p.tags.includes(defaultTagId));
     return matchesCategoryBase && matchesTagBase;
   });
 
   const filtered = restrictedProducts.filter(p => {
-    const activeCategoryMatch = activeCategoryIds.length === 0 || activeCategoryIds.some(id => p.categories.includes(id));
-    const searchMatch = !activeSearch || t(p.locals.name).toLowerCase().includes(activeSearch.toLowerCase()) || p.brand.toLowerCase().includes(activeSearch.toLowerCase());
-    const tagMatch = !activeTag || p.tags.includes(activeTag);
-    return activeCategoryMatch && searchMatch && tagMatch;
+    const activeCategoryMatch = activeCategoryIds.length === 0 || (p.categories && activeCategoryIds.some(id => p.categories.includes(id)));
+    
+    const searchWords = activeSearch ? activeSearch.toLowerCase().split(/\s+/).filter(Boolean) : [];
+    const searchMatch = searchWords.length === 0 || searchWords.every(word => {
+      const name = (p.name || '').toLowerCase();
+      const localName = (p.locals?.name && t(p.locals.name).toLowerCase()) || '';
+      const brand = (p.brand || '').toLowerCase();
+      const desc = (p.description || '').toLowerCase();
+      const localDesc = (p.locals?.description && t(p.locals.description).toLowerCase()) || '';
+      
+      return name.includes(word) || localName.includes(word) || brand.includes(word) || desc.includes(word) || localDesc.includes(word);
+    });
+
+    const tagMatch = !activeTag || (p.tags && p.tags.includes(activeTag));
+    const brandMatch = !activeBrand || p.brand === activeBrand;
+    const priceMatch = p.price >= activePriceRange[0] && p.price <= activePriceRange[1];
+    
+    return activeCategoryMatch && searchMatch && tagMatch && brandMatch && priceMatch;
   });
 
   const sorted = [...filtered].sort((a, b) => {
@@ -1125,15 +1141,26 @@ export const ExploreProducts = ({
     else setInternalSearch(val);
   };
 
-  const handleCategoryToggle = (slug: string) => {
+  const handleCategoryToggle = (idOrSlug: string) => {
+    if (!idOrSlug) {
+      if (useUrlParams) setUrlCategorySlugs([]);
+      else setInternalCategorySlugs([]);
+      return;
+    }
+
+    const category = categories.find(c => c.id === idOrSlug || c.slug === idOrSlug);
+    if (!category) return;
+    
+    const slugToUse = category.slug || category.id;
+
     if (useUrlParams) {
       const currentSlugs = filterParams.categorySlugs;
-      const nextSlugs = currentSlugs.includes(slug) 
-        ? currentSlugs.filter(s => s !== slug) 
-        : [...currentSlugs, slug];
+      const nextSlugs = currentSlugs.includes(slugToUse) 
+        ? currentSlugs.filter(s => s !== slugToUse) 
+        : [...currentSlugs, slugToUse];
       setUrlCategorySlugs(nextSlugs);
     } else {
-      setInternalCategorySlugs(prev => prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]);
+      setInternalCategorySlugs(prev => prev.includes(slugToUse) ? prev.filter(s => s !== slugToUse) : [...prev, slugToUse]);
     }
   };
 
@@ -1143,9 +1170,38 @@ export const ExploreProducts = ({
   };
 
   const handleTagChange = (val: string) => {
-    if (useUrlParams) setUrlTag(val);
-    else setInternalTag(val);
+    if (useUrlParams) {
+      const current = filterParams.selectedTagId;
+      setUrlTag(current === val ? '' : val);
+    } else {
+      setInternalTag(prev => prev === val ? '' : val);
+    }
   };
+
+  const handleBrandChange = (val: string) => {
+    if (useUrlParams) setUrlBrand(val);
+    else setInternalBrand(val);
+  };
+
+  const handlePriceChange = (min: number, max: number) => {
+    if (useUrlParams) setUrlPrice(min, max);
+    else setInternalPriceRange([min, max]);
+  };
+
+  const gridClass = {
+    2: 'grid-cols-2 lg:grid-cols-2',
+    3: 'grid-cols-2 md:grid-cols-3 lg:grid-cols-3',
+    4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+    5: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5',
+    6: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+  }[columns as 2 | 3 | 4 | 5 | 6] || 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+
+  const gapClass = {
+    none: 'gap-0',
+    small: 'gap-2 md:gap-4',
+    medium: 'gap-4 md:gap-8',
+    large: 'gap-6 md:gap-12'
+  }[gapSize];
 
   return (
     <div className="py-12 space-y-10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -1184,7 +1240,7 @@ export const ExploreProducts = ({
       )}
 
       {(enableSearch || showFilters || enableSort) && (
-        <div className="space-y-6">
+        <div className={`space-y-6 ${filterStyle === 'sidebar' ? 'md:hidden' : ''}`}>
           <div className="flex flex-col md:flex-row items-center gap-4">
             {enableSearch && (
               <div className="relative flex-1 group w-full">
@@ -1198,7 +1254,7 @@ export const ExploreProducts = ({
                 />
               </div>
             )}
-            {showFilters && (
+            {showFilters && filterStyle === 'drawer' && (
               <button 
                 onClick={() => setShowFilterDrawer(true)}
                 className="w-full md:w-auto flex items-center justify-center gap-2 px-8 py-4 bg-black text-white rounded-2xl font-black text-[10px] uppercase shadow-xl"
@@ -1207,9 +1263,22 @@ export const ExploreProducts = ({
                 {t({ en: 'Filter', ar: 'تصفية' })}
               </button>
             )}
+            {enableSort && filterStyle === 'bar' && (
+              <div className="flex gap-2 w-full md:w-auto">
+                {['newest', 'price-low', 'price-high'].map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => handleSortChange(opt)}
+                    className={`flex-1 md:flex-none px-4 py-3 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${activeSort === opt ? 'bg-black text-white border-black shadow-lg' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-300'}`}
+                  >
+                    {t(opt === 'newest' ? { en: 'Newest', ar: 'الأحدث' } : opt === 'price-low' ? { en: 'Price: Low', ar: 'السعر: من الأقل' } : { en: 'Price: High', ar: 'السعر: من الأعلى' })}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {!restrictToFiltered && filterOptions.length > 0 && (
+          {filterStyle === 'bar' && filterOptions.length > 0 && (
              <Carousel opts={{ align: "start", dragFree: true }} className="w-full">
               <CarouselContent className="-ms-2">
                 <CarouselItem className="ps-2 basis-auto">
@@ -1220,11 +1289,11 @@ export const ExploreProducts = ({
                     {t({ en: 'All Items', ar: 'الكل' })}
                   </button>
                 </CarouselItem>
-                {filterOptions.slice(0, 15).map(cat => (
+                {filterOptions.map(cat => (
                   <CarouselItem key={cat.id} className="ps-2 basis-auto">
                     <button 
-                      onClick={() => handleCategoryToggle(cat.slug)}
-                      className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeCategoryIds.includes(cat.id) ? 'bg-black text-white shadow-xl' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                      onClick={() => handleCategoryToggle(cat.slug || cat.id)}
+                      className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeCategoryIds.includes(cat.id) ? 'bg-black text-white shadow-[#00000040]_shadow-lg ring-2 ring-black ring-offset-2' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
                     >
                       {t(cat.locals?.title || cat.name)}
                     </button>
@@ -1236,48 +1305,156 @@ export const ExploreProducts = ({
         </div>
       )}
 
-      <div className="relative min-h-[400px]">
-        {displayed.length > 0 ? (
-          layout === 'carousel' ? (
-             <Carousel opts={{ align: "start", loop: false }} className="w-full">
-              <CarouselContent>
-                {displayed.map(product => (
-                  <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
-                     <ProductCard product={product} onSelect={handleSelect} variant={cardVariant} />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
-          ) : enableVirtualScroll ? (
-            <VirtuosoGrid
-              useWindowScroll
-              data={displayed}
-              components={{
-                List: GridContainer,
-                Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
-                  <div {...props} ref={ref} className="p-1">
-                    {children}
-                  </div>
-                ))
-              }}
-              itemContent={(index, product) => (
-                <ProductCard product={product} onSelect={handleSelect} variant={cardVariant} />
+      <div className={`flex flex-col md:flex-row gap-12 min-h-[400px]`}>
+        {showFilters && filterStyle === 'sidebar' && (
+           <aside className="hidden md:block w-70 shrink-0 space-y-12">
+              <div className="space-y-6">
+                 <h4 className="text-xs font-black uppercase tracking-[0.2em]">{t({ en: 'Categories', ar: 'الفئات' })}</h4>
+                 <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => useUrlParams ? setUrlCategorySlugs([]) : setInternalCategorySlugs([])}
+                      className={`text-left text-[10px] font-bold uppercase tracking-widest transition-all ${activeCategoryIds.length === 0 ? 'text-black translate-x-2' : 'text-gray-400 hover:text-black'}`}
+                    >
+                      — {t({ en: 'All Categories', ar: 'جميع الفئات' })}
+                    </button>
+                    {filterOptions.map(cat => (
+                      <button 
+                        key={cat.id}
+                        onClick={() => handleCategoryToggle(cat.slug || cat.id)}
+                        className={`text-left text-[10px] font-bold uppercase tracking-widest transition-all ${activeCategoryIds.includes(cat.id) ? 'text-black translate-x-2' : 'text-gray-400 hover:text-black'}`}
+                      >
+                        — {t(cat.locals?.title || cat.title)}
+                      </button>
+                    ))}
+                 </div>
+              </div>
+
+              <div className="space-y-6">
+                 <h4 className="text-xs font-black uppercase tracking-[0.2em]">{t({ en: 'Brands', ar: 'الماركات' })}</h4>
+                 <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => handleBrandChange('')}
+                      className={`text-left text-[10px] font-bold uppercase tracking-widest transition-all ${activeBrand === '' ? 'text-black translate-x-2' : 'text-gray-400 hover:text-black'}`}
+                    >
+                      — {t({ en: 'All Brands', ar: 'جميع الماركات' })}
+                    </button>
+                    {brands.slice(0, 10).map(brand => (
+                      <button 
+                        key={brand}
+                        onClick={() => handleBrandChange(brand)}
+                        className={`text-left text-[10px] font-bold uppercase tracking-widest transition-all ${activeBrand === brand ? 'text-black translate-x-2' : 'text-gray-400 hover:text-black'}`}
+                      >
+                        — {brand}
+                      </button>
+                    ))}
+                 </div>
+              </div>
+
+              <div className="space-y-6">
+                 <h4 className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500">{t({ en: 'Price Range', ar: 'نطاق السعر' })}</h4>
+                 <div className="space-y-4 pr-4">
+                    <div className="flex justify-between text-[10px] font-black">
+                       <span>{activePriceRange[0]}</span>
+                       <span>{activePriceRange[1]}</span>
+                    </div>
+                    <input 
+                       type="range"
+                       min="0"
+                       max="10000"
+                       step="100"
+                       value={activePriceRange[1]}
+                       onChange={(e) => handlePriceChange(activePriceRange[0], parseInt(e.target.value))}
+                       className="w-full accent-black"
+                    />
+                 </div>
+              </div>
+
+              <div className="space-y-6">
+                 <h4 className="text-xs font-black uppercase tracking-[0.2em]">{t({ en: 'Sort By', ar: 'ترتيب حسب' })}</h4>
+                 <div className="flex flex-col gap-3">
+                    {[
+                      { id: 'newest', label: { en: 'Newest Arrivals', ar: 'الأحدث وصولاً' } },
+                      { id: 'price-low', label: { en: 'Price: Low to High', ar: 'السعر: من الأقل للأعلى' } },
+                      { id: 'price-high', label: { en: 'Price: High to Low', ar: 'السعر: من الأعلى للأقل' } }
+                    ].map(opt => (
+                      <button 
+                        key={opt.id}
+                        onClick={() => handleSortChange(opt.id)}
+                        className={`text-left text-[10px] font-bold uppercase tracking-widest transition-all ${activeSort === opt.id ? 'text-black translate-x-2' : 'text-gray-400 hover:text-black'}`}
+                      >
+                        — {t(opt.label)}
+                      </button>
+                    ))}
+                 </div>
+              </div>
+
+              {tags.length > 0 && (
+                 <div className="space-y-6">
+                    <h4 className="text-xs font-black uppercase tracking-[0.2em]">{t({ en: 'Tags', ar: 'الوسوم' })}</h4>
+                    <div className="flex flex-wrap gap-2">
+                       {tags.map(tag => (
+                          <button 
+                            key={tag.id}
+                            onClick={() => handleTagChange(tag.id)}
+                            className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border transition-all ${activeTag === tag.id ? 'bg-black text-white border-black' : 'bg-white text-gray-400 border-gray-100 hover:border-gray-300'}`}
+                          >
+                            {t(tag.title)}
+                          </button>
+                       ))}
+                    </div>
+                 </div>
               )}
-            />
-          ) : (
-            <GridContainer>
-              {displayed.map(product => (
-                <ProductCard key={product.id} product={product} onSelect={handleSelect} variant={cardVariant} />
-              ))}
-            </GridContainer>
-          )
-        ) : (
-          <div className="py-20 text-center bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100">
-            <Search className="w-12 h-12 text-gray-200 mx-auto mb-6" />
-            <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t({ en: 'No products matched', ar: 'لا توجد منتجات مطابقة' })}</h3>
-            <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">{t({ en: 'Try adjusting your filters', ar: 'حاول تعديل الفلاتر' })}</p>
-          </div>
+           </aside>
         )}
+
+        <div className="flex-1">
+          {displayed.length > 0 ? (
+            layout === 'carousel' ? (
+              <Carousel opts={{ align: "start", loop: false }} className="w-full">
+                <CarouselContent>
+                  {displayed.map(product => (
+                    <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
+                      <ProductCard product={product} onSelect={handleSelect} variant={cardVariant} />
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            ) : layout === 'list' ? (
+              <div className="space-y-4">
+                {displayed.map(product => (
+                  <div key={product.id} className="group relative bg-white rounded-3xl p-4 flex gap-6 hover:shadow-2xl transition-all border border-gray-50 cursor-pointer" onClick={() => handleSelect(product)}>
+                    <div className="w-32 h-32 rounded-2xl overflow-hidden bg-gray-50 shadow-inner">
+                      <img src={product.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                    </div>
+                    <div className="flex-1 py-2 flex flex-col justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">{product.brand}</p>
+                        <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t(product.locals.name)}</h3>
+                        <p className="text-xs text-gray-400 line-clamp-2 max-w-xl">{t(product.locals.description)}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-2xl font-black tracking-tighter">{product.price} <span className="text-[10px] text-gray-400 font-bold uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span></span>
+                        <button className="px-6 py-2 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 transition-colors">{t({ en: 'Details', ar: 'التفاصيل' })}</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={`grid ${gridClass} ${gapClass}`}>
+                {displayed.map(product => (
+                  <ProductCard key={product.id} product={product} onSelect={handleSelect} variant={cardVariant} />
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="py-20 text-center bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100">
+              <Search className="w-12 h-12 text-gray-200 mx-auto mb-6" />
+              <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t({ en: 'No products matched', ar: 'لا توجد منتجات مطابقة' })}</h3>
+              <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">{t({ en: 'Try adjusting your filters', ar: 'حاول تعديل الفلاتر' })}</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {showFilterDrawer && (
@@ -1286,6 +1463,12 @@ export const ExploreProducts = ({
           categories={filterOptions}
           selectedCategoryIds={activeCategoryIds}
           setSelectedCategoryId={handleCategoryToggle}
+          brands={brands}
+          selectedBrand={activeBrand}
+          setSelectedBrand={handleBrandChange}
+          priceRange={activePriceRange as [number, number]}
+          setPriceRange={handlePriceChange}
+          currency={t(appSettings.currency?.symbol || config.currency.symbol)}
           sortOption={activeSort}
           setSortOption={handleSortChange}
           tags={tags}
@@ -1344,35 +1527,35 @@ export const ProductCard = ({
                 e.stopPropagation();
                 toggleWishlist(product.id);
               }}
-              className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
+              className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all active:scale-90 ${
                 isInWishlist(product.id) 
                   ? 'bg-red-500 text-white' 
-                  : 'bg-white/20 text-white hover:bg-red-500'
+                  : 'bg-white/20 text-white hover:bg-black/40'
               }`}
             >
-              <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+              <Heart className={`w-6 h-6 md:w-7 md:h-7 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
             </button>
           )}
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6 text-white space-y-2">
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-white space-y-3 bg-gradient-to-t from-black/95 via-black/40 to-transparent">
           <div className="space-y-1">
-            <h3 className="font-black text-lg line-clamp-1 tracking-tighter uppercase italic">{t(product.locals.name)}</h3>
-            <p className="text-white/60 text-[10px] font-black uppercase tracking-[0.3em]">{product.brand}</p>
+            <h3 className="font-black text-xl md:text-2xl line-clamp-1 tracking-tighter uppercase italic">{t(product.locals.name)}</h3>
+            <p className="text-white/60 text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">{product.brand}</p>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-baseline gap-1">
-              <span className="font-black text-3xl md:text-4xl tracking-tighter">{product.price}</span>
-              <span className="text-xs md:text-sm text-white/50 font-bold">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+              <span className="font-black text-4xl md:text-5xl tracking-tighter leading-none">{product.price}</span>
+              <span className="text-xs md:text-sm text-white/50 font-bold uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
             <button 
               onClick={(e) => {
                 e.stopPropagation();
                 addToCart(product);
               }}
-              className="w-12 h-12 md:w-14 md:h-14 bg-emerald-500 text-white rounded-[1.25rem] flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95"
+              className="w-14 h-14 md:w-16 md:h-16 bg-emerald-500 text-white rounded-[1.5rem] flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95 shrink-0"
             >
-              <ShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
+              <ShoppingCart className="w-7 h-7 md:w-8 md:h-8" />
             </button>
           </div>
         </div>
@@ -1413,17 +1596,17 @@ export const ProductCard = ({
               e.stopPropagation();
               addToCart(product);
             }}
-            className="absolute bottom-6 left-6 right-6 py-4 bg-black text-white rounded-2xl font-black uppercase tracking-widest text-[10px] opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0 hover:bg-emerald-500 shadow-2xl"
+            className="absolute bottom-6 left-6 right-6 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0 hover:bg-black shadow-2xl z-20"
           >
-            {t({ en: 'Quick Shop', ar: 'تسوق سريع' })}
+            {t({ en: 'Add to Cart', ar: 'أضف للسلة' })}
           </button>
         </div>
         <div className="px-4">
            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-1">{product.brand}</p>
            <h4 className="text-xl font-black italic uppercase tracking-tighter leading-none mb-3 group-hover:text-emerald-600 transition-colors line-clamp-1">{t(product.locals.name)}</h4>
-           <div className="flex items-center gap-2">
-             <span className="text-3xl font-black tracking-tighter text-black">{product.price}</span>
-             <span className="text-xs font-bold text-gray-400 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+           <div className="flex items-center gap-3">
+             <span className="text-4xl md:text-5xl font-black tracking-tighter text-black">{product.price}</span>
+             <span className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
            </div>
         </div>
       </div>
@@ -1594,13 +1777,13 @@ export const ProductCard = ({
               e.stopPropagation();
               toggleWishlist(product.id);
             }}
-            className={`w-9 h-9 md:w-11 md:h-11 rounded-full shadow-xl backdrop-blur-md transition-all flex items-center justify-center ${
+            className={`w-11 h-11 md:w-13 md:h-13 rounded-full shadow-xl backdrop-blur-md transition-all flex items-center justify-center active:scale-90 ${
               isInWishlist(product.id) 
                 ? 'bg-red-500 text-white' 
-                : 'bg-white/20 text-white hover:bg-red-50'
+                : 'bg-white/20 text-white hover:bg-black/40'
             }`}
           >
-            <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+            <Heart className={`w-6 h-6 md:w-7 md:h-7 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
           </button>
         )}
       </div>
@@ -2981,6 +3164,10 @@ const ProfilePage = ({
                   <div className="space-y-2">
                     <button onClick={() => onNavigate('orders')} className="w-full text-left p-3 hover:bg-gray-50 rounded-xl flex items-center justify-between group transition-all">
                       <span className="text-sm font-medium">{t({ en: 'View My Orders', ar: 'عرض طلباتي' })}</span>
+                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-black transition-all" />
+                    </button>
+                    <button onClick={() => onNavigate('wishlist')} className="w-full text-left p-3 hover:bg-gray-50 rounded-xl flex items-center justify-between group transition-all">
+                      <span className="text-sm font-medium">{t({ en: 'My Wishlist', ar: 'قائمة أمنياتي' })}</span>
                       <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-black transition-all" />
                     </button>
                     <button onClick={() => onNavigate('cart')} className="w-full text-left p-3 hover:bg-gray-50 rounded-xl flex items-center justify-between group transition-all">
@@ -7093,6 +7280,7 @@ const OrdersPage = () => {
 
 const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: string) => void }) => {
   const { t, lang } = useContext(LanguageContext);
+  const location = useLocation();
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -7148,7 +7336,7 @@ const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: 
   }
 
   return (
-    <div className="puck-content" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="puck-content" key={location.search} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <Render config={puckConfig} data={content} />
     </div>
   );
@@ -7211,17 +7399,16 @@ const FilterSidebar = ({
         <div className="space-y-2">
           <button 
             onClick={() => setSelectedCategoryId('')}
-            className={`block text-sm ${selectedCategoryIds.length === 0 ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+            className={`block text-sm transition-all ${selectedCategoryIds.length === 0 ? 'font-bold text-black border-l-4 border-black pl-2' : 'text-gray-500 hover:text-black border-l-4 border-transparent pl-2'}`}
           >
             {t({ en: 'All Categories', ar: 'جميع الفئات' })}
           </button>
           {categories.map(c => (
             <button 
               key={c.id}
-              onClick={() => setSelectedCategoryId(c.slug)}
-              className={`flex items-center gap-2 text-sm transition-all ${selectedCategoryIds.includes(c.id) ? 'font-black text-black scale-105' : 'text-gray-500 hover:text-black'}`}
+              onClick={() => setSelectedCategoryId(c.slug || c.id)}
+              className={`flex items-center gap-2 text-sm transition-all ${selectedCategoryIds.includes(c.id) ? 'font-black text-black scale-105 border-l-4 border-black pl-2' : 'text-gray-500 hover:text-black border-l-4 border-transparent pl-2'}`}
             >
-              {c.icon && <Icon icon={c.icon} className="w-4 h-4" />}
               {t(c.locals.title)}
             </button>
           ))}
@@ -7337,11 +7524,17 @@ const CategoryProducts = ({ categoryId, onSelectProduct }: { categoryId: string,
   );
 };
 
-const FilterDrawer = ({ 
+export const FilterDrawer = ({ 
   onClose,
   categories,
   selectedCategoryIds,
   setSelectedCategoryId,
+  brands,
+  selectedBrand,
+  setSelectedBrand,
+  priceRange,
+  setPriceRange,
+  currency,
   sortOption,
   setSortOption,
   tags,
@@ -7352,6 +7545,12 @@ const FilterDrawer = ({
   categories: Category[];
   selectedCategoryIds: string[];
   setSelectedCategoryId: (c: string) => void;
+  brands: string[];
+  selectedBrand: string;
+  setSelectedBrand: (b: string) => void;
+  priceRange: [number, number];
+  setPriceRange: (min: number, max: number) => void;
+  currency: string;
   sortOption: string;
   setSortOption: (s: string) => void;
   tags: Tag[];
@@ -7359,7 +7558,7 @@ const FilterDrawer = ({
   setSelectedTagId: (id: string) => void;
 }) => {
   const { t, lang } = useContext(LanguageContext);
-  const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'tags'>('sort');
+  const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'brands' | 'price' | 'tags'>('sort');
 
   return (
     <Drawer open={true} onOpenChange={(open) => !open && onClose()}>
@@ -7369,28 +7568,25 @@ const FilterDrawer = ({
           <DrawerTitleHidden>{t({ en: 'Filter and Sort Products', ar: 'تصفية وترتيب المنتجات' })}</DrawerTitleHidden>
         </DrawerHeader>
         
-        <div className="flex border-b border-gray-100 sticky top-0 bg-white z-10">
-          <button 
-            onClick={() => setActiveTab('sort')}
-            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'sort' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
-          >
-            {t({ en: 'Sort', ar: 'ترتيب' })}
-          </button>
-          <button 
-            onClick={() => setActiveTab('categories')}
-            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'categories' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
-          >
-            {t({ en: 'Categories', ar: 'الفئات' })}
-          </button>
-          <button 
-            onClick={() => setActiveTab('tags')}
-            className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'tags' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
-          >
-            {t({ en: 'Tags', ar: 'الوسوم' })}
-          </button>
+        <div className="flex border-b border-gray-100 sticky top-0 bg-white z-20 overflow-x-auto no-scrollbar">
+          {[
+            { id: 'sort', label: { en: 'Sort', ar: 'ترتيب' } },
+            { id: 'categories', label: { en: 'Categories', ar: 'الفئات' } },
+            { id: 'brands', label: { en: 'Brands', ar: 'العلامات' } },
+            { id: 'price', label: { en: 'Price', ar: 'السعر' } },
+            { id: 'tags', label: { en: 'Tags', ar: 'الوسوم' } }
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === tab.id ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            >
+              {t(tab.label)}
+            </button>
+          ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-20">
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-20 no-scrollbar">
           {activeTab === 'sort' && (
             <div className="space-y-3">
               {[
@@ -7410,46 +7606,90 @@ const FilterDrawer = ({
             </div>
           )}
           {activeTab === 'categories' && (
-            <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
               <button 
                 onClick={() => setSelectedCategoryId('')}
-                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryIds.length === 0 ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                className={`px-3 py-1.5 rounded-full border text-[9px] font-black uppercase transition-all ${
+                  selectedCategoryIds.length === 0 ? 'border-black bg-black text-white ring-2 ring-black ring-offset-1 shadow-md' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                }`}
               >
-                <span className="font-bold text-sm tracking-tight">{t({ en: 'All Items', ar: 'جميع المنتجات' })}</span>
-                {selectedCategoryIds.length === 0 && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                {t({ en: 'All', ar: 'الكل' })}
               </button>
               {categories.map(c => (
                 <button 
                   key={c.id}
-                  onClick={() => setSelectedCategoryId(c.slug)}
-                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedCategoryIds.includes(c.id) ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                  onClick={() => setSelectedCategoryId(c.slug || c.id)}
+                  className={`px-3 py-1.5 rounded-full border text-[9px] font-black uppercase transition-all flex items-center gap-1.5 ${
+                    selectedCategoryIds.includes(c.id) ? 'border-black bg-black text-white ring-2 ring-black ring-offset-1 shadow-md' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    {c.icon && <Icon icon={c.icon} className="w-5 h-5" />}
-                    <span className="font-bold text-sm tracking-tight">{t(c.locals?.title)}</span>
-                  </div>
-                  {selectedCategoryIds.includes(c.id) && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  <span>{t(c.locals?.title || c.title)}</span>
                 </button>
               ))}
             </div>
           )}
+          {activeTab === 'brands' && (
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={() => setSelectedBrand('')}
+                className={`px-4 py-2 rounded-full border text-[10px] font-bold uppercase transition-all ${
+                  selectedBrand === '' ? 'border-black bg-black text-white' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                }`}
+              >
+                {t({ en: 'All Brands', ar: 'الكل' })}
+              </button>
+              {brands.map(b => (
+                <button 
+                  key={b}
+                  onClick={() => setSelectedBrand(b)}
+                  className={`px-4 py-2 rounded-full border text-[10px] font-bold uppercase tracking-widest transition-all ${
+                    selectedBrand === b ? 'border-black bg-black text-white' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                  }`}
+                >
+                  {b}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeTab === 'price' && (
+            <div className="space-y-8 p-4">
+              <div className="space-y-4">
+                 <div className="flex justify-between text-xs font-black uppercase tracking-widest">
+                    <span>{priceRange[0]} {currency}</span>
+                    <span>{priceRange[1]} {currency}</span>
+                 </div>
+                 <input 
+                    type="range"
+                    min="0"
+                    max="10000"
+                    step="100"
+                    value={priceRange[1]}
+                    onChange={(e) => setPriceRange(priceRange[0], parseInt(e.target.value))}
+                    className="w-full accent-black"
+                 />
+                 <p className="text-[10px] text-gray-400 font-bold uppercase text-center">{t({ en: 'Drag to set maximum price', ar: 'اسحب لتحديد السعر الأقصى' })}</p>
+              </div>
+            </div>
+          )}
           {activeTab === 'tags' && (
-            <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
               <button 
                 onClick={() => setSelectedTagId('')}
-                className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedTagId === '' ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                className={`px-3 py-1.5 rounded-full border text-[9px] font-black uppercase transition-all ${
+                  selectedTagId === '' ? 'border-black bg-black text-white' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                }`}
               >
-                <span className="font-bold text-sm tracking-tight">{t({ en: 'All Tags', ar: 'جميع الوسوم' })}</span>
-                {selectedTagId === '' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                {t({ en: 'All', ar: 'الكل' })}
               </button>
               {tags.map(tag => (
                 <button 
                   key={tag.id}
                   onClick={() => setSelectedTagId(tag.id)}
-                  className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${selectedTagId === tag.id ? 'border-black bg-black text-white' : 'border-gray-50 hover:border-gray-200'}`}
+                  className={`px-3 py-1.5 rounded-full border text-[9px] font-black uppercase transition-all ${
+                    selectedTagId === tag.id ? 'border-black bg-black text-white' : 'border-gray-50 text-gray-400 hover:border-gray-200'
+                  }`}
                 >
-                  <span className="font-bold text-sm tracking-tight">{t(tag.title)}</span>
-                  {selectedTagId === tag.id && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                  <span>{t(tag.title)}</span>
                 </button>
               ))}
             </div>
@@ -7576,7 +7816,7 @@ function MainApp() {
 
   const selectedCategoryIds = useMemo(() => {
     return categories
-      .filter(c => filterParams.categorySlugs.includes(c.slug))
+      .filter(c => filterParams.categorySlugs.includes(c.slug) || filterParams.categorySlugs.includes(c.id))
       .map(c => c.id);
   }, [categories, filterParams.categorySlugs]);
 
@@ -7591,11 +7831,12 @@ function MainApp() {
     // Find category to get slug
     const category = categories.find(c => c.id === idOrSlug || c.slug === idOrSlug);
     if (category) {
+      const slugToUse = category.slug || category.id;
       const slugs = [...filterParams.categorySlugs];
-      if (slugs.includes(category.slug)) {
-        setCategorySlugs(slugs.filter(s => s !== category.slug));
+      if (slugs.includes(slugToUse)) {
+        setCategorySlugs(slugs.filter(s => s !== slugToUse));
       } else {
-        setCategorySlugs([...slugs, category.slug]);
+        setCategorySlugs([...slugs, slugToUse]);
       }
     }
   };
@@ -8021,13 +8262,6 @@ function MainApp() {
                   <Route path="/shop" element={
                       <div className="max-w-7xl mx-auto px-4 md:px-6">
                         <PuckPage pageId="shop" onNavigate={setCurrentPage} />
-                        <ExploreProducts 
-                          useUrlParams={true} 
-                          showFilters={true} 
-                          enableSearch={true} 
-                          enableSort={true}
-                          onSelectProduct={setSelectedProduct}
-                        />
                       </div>
                   } />
 
@@ -8132,6 +8366,12 @@ function MainApp() {
                     categories={categories}
                     selectedCategoryIds={selectedCategoryIds}
                     setSelectedCategoryId={setSelectedCategoryId}
+                    brands={brands}
+                    selectedBrand={selectedBrand}
+                    setSelectedBrand={setSelectedBrand}
+                    priceRange={priceRange}
+                    setPriceRange={(min, max) => setPriceRange(min, max)}
+                    currency={t(appSettings.currency?.symbol || config.currency.symbol)}
                     sortOption={sortOption}
                     setSortOption={setSortOption}
                     tags={tags}

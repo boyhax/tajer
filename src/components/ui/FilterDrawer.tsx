@@ -11,8 +11,14 @@ import { Category, Tag } from '../../types';
 interface FilterDrawerProps {
   onClose: () => void;
   categories: Category[];
-  selectedCategoryId: string;
+  selectedCategoryIds: string[];
   setSelectedCategoryId: (c: string) => void;
+  brands: string[];
+  selectedBrand: string;
+  setSelectedBrand: (b: string) => void;
+  priceRange: [number, number];
+  setPriceRange: (min: number, max: number) => void;
+  currency: string;
   sortOption: string;
   setSortOption: (s: string) => void;
   tags: Tag[];
@@ -23,8 +29,14 @@ interface FilterDrawerProps {
 export const FilterDrawer = ({ 
   onClose,
   categories,
-  selectedCategoryId,
+  selectedCategoryIds,
   setSelectedCategoryId,
+  brands,
+  selectedBrand,
+  setSelectedBrand,
+  priceRange,
+  setPriceRange,
+  currency,
   sortOption,
   setSortOption,
   tags,
@@ -32,7 +44,7 @@ export const FilterDrawer = ({
   setSelectedTagId
 }: FilterDrawerProps) => {
   const { t, lang } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'tags'>('sort');
+  const [activeTab, setActiveTab] = useState<'sort' | 'categories' | 'brands' | 'price' | 'tags'>('sort');
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
@@ -56,22 +68,34 @@ export const FilterDrawer = ({
           </button>
         </div>
 
-        <div className="flex border-b border-gray-100">
+        <div className="flex border-b border-gray-100 overflow-x-auto scrollbar-hide">
           <button 
             onClick={() => setActiveTab('sort')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'sort' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${activeTab === 'sort' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Sort', ar: 'ترتيب' })}
           </button>
           <button 
             onClick={() => setActiveTab('categories')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'categories' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${activeTab === 'categories' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Categories', ar: 'الفئات' })}
           </button>
           <button 
+            onClick={() => setActiveTab('brands')}
+            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${activeTab === 'brands' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+          >
+            {t({ en: 'Brands', ar: 'الماركات' })}
+          </button>
+          <button 
+            onClick={() => setActiveTab('price')}
+            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${activeTab === 'price' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+          >
+            {t({ en: 'Price', ar: 'السعر' })}
+          </button>
+          <button 
             onClick={() => setActiveTab('tags')}
-            className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'tags' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
+            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap ${activeTab === 'tags' ? 'border-black text-black' : 'border-transparent text-gray-400'}`}
           >
             {t({ en: 'Tags', ar: 'الوسوم' })}
           </button>
@@ -100,21 +124,65 @@ export const FilterDrawer = ({
             <div className="space-y-2">
               <button 
                 onClick={() => setSelectedCategoryId('')}
-                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryId === '' ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryIds.length === 0 ? 'border-black bg-black text-white ring-2 ring-black ring-offset-2 shadow-md' : 'border-gray-100 hover:border-gray-300'}`}
               >
                 <span className="font-bold text-sm">{t({ en: 'All Categories', ar: 'جميع الفئات' })}</span>
-                {selectedCategoryId === '' && <CheckCircle2 className="w-4 h-4" />}
+                {selectedCategoryIds.length === 0 && <CheckCircle2 className="w-4 h-4" />}
               </button>
               {categories.map(c => (
                 <button 
                   key={c.id}
-                  onClick={() => setSelectedCategoryId(c.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryId === c.id ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                  onClick={() => setSelectedCategoryId(c.slug || c.id)}
+                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedCategoryIds.includes(c.id) ? 'border-black bg-black text-white ring-2 ring-black ring-offset-2 shadow-md' : 'border-gray-100 hover:border-gray-300'}`}
                 >
                   <span className="font-bold text-sm">{t(c.locals.title)}</span>
-                  {selectedCategoryId === c.id && <CheckCircle2 className="w-4 h-4" />}
+                  {selectedCategoryIds.includes(c.id) && <CheckCircle2 className="w-4 h-4" />}
                 </button>
               ))}
+            </div>
+          )}
+          {activeTab === 'brands' && (
+            <div className="space-y-2">
+              <button 
+                onClick={() => setSelectedBrand('')}
+                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedBrand === '' ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+              >
+                <span className="font-bold text-sm">{t({ en: 'All Brands', ar: 'جميع الماركات' })}</span>
+                {selectedBrand === '' && <CheckCircle2 className="w-4 h-4" />}
+              </button>
+              {brands.map(brand => (
+                <button 
+                  key={brand}
+                  onClick={() => setSelectedBrand(brand)}
+                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${selectedBrand === brand ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}
+                >
+                  <span className="font-bold text-sm">{brand}</span>
+                  {selectedBrand === brand && <CheckCircle2 className="w-4 h-4" />}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeTab === 'price' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-end">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase text-gray-400">{t({ en: 'Up to', ar: 'حتى' })}</span>
+                  <p className="text-2xl font-black italic tracking-tighter">{priceRange[1]} {currency}</p>
+                </div>
+              </div>
+              <input 
+                type="range"
+                min="0"
+                max="10000"
+                step="100"
+                value={priceRange[1]}
+                onChange={(e) => setPriceRange(priceRange[0], parseInt(e.target.value))}
+                className="w-full accent-black h-2 rounded-lg appearance-none cursor-pointer bg-gray-100"
+              />
+              <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                <span>0</span>
+                <span>10,000+</span>
+              </div>
             </div>
           )}
           {activeTab === 'tags' && (

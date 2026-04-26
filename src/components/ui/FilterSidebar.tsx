@@ -6,7 +6,7 @@ import { Category, Tag } from '../../types';
 interface FilterSidebarProps {
   categories: Category[];
   brands: string[];
-  selectedCategoryId: string;
+  selectedCategoryIds: string[];
   setSelectedCategoryId: (c: string) => void;
   selectedBrand: string;
   setSelectedBrand: (b: string) => void;
@@ -20,7 +20,7 @@ interface FilterSidebarProps {
 export const FilterSidebar = ({ 
   categories, 
   brands, 
-  selectedCategoryId, 
+  selectedCategoryIds, 
   setSelectedCategoryId, 
   selectedBrand, 
   setSelectedBrand, 
@@ -61,15 +61,15 @@ export const FilterSidebar = ({
         <div className="space-y-2">
           <button 
             onClick={() => setSelectedCategoryId('')}
-            className={`block text-sm ${selectedCategoryId === '' ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+            className={`block text-sm ${selectedCategoryIds.length === 0 ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
           >
             {t({ en: 'All Categories', ar: 'جميع الفئات' })}
           </button>
           {categories.map(c => (
             <button 
               key={c.id}
-              onClick={() => setSelectedCategoryId(c.id)}
-              className={`block text-sm ${selectedCategoryId === c.id ? 'font-bold text-black' : 'text-gray-500 hover:text-black'}`}
+              onClick={() => setSelectedCategoryId(c.slug)}
+              className={`flex items-center gap-2 text-sm transition-all ${selectedCategoryIds.includes(c.id) ? 'font-black text-black scale-105' : 'text-gray-500 hover:text-black'}`}
             >
               {t(c.locals.title)}
             </button>

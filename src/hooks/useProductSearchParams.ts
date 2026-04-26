@@ -14,48 +14,65 @@ export interface ProductSearchParams {
 export function useProductSearchParams() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const searchQuery = searchParams.get('q') || '';
-  const selectedBrand = searchParams.get('brand') || '';
-  const minPrice = Number(searchParams.get('minPrice')) || 0;
-  const maxPrice = Number(searchParams.get('maxPrice')) || 10000;
-  const sortOption = searchParams.get('sort') || 'newest';
-  const selectedTagId = searchParams.get('tag') || '';
+  // Mapping internal names to URL parameter keys
+  const keyMap: Record<string, string> = {
+    searchQuery: 'q',
+    categorySlugs: 'categories',
+    selectedBrand: 'brand',
+    minPrice: 'minPrice',
+    maxPrice: 'maxPrice',
+    sortOption: 'sort',
+    selectedTagId: 'tag',
+  };
+
+  // Reverse mapping for reading
+  const revMap: Record<string, string> = Object.fromEntries(
+    Object.entries(keyMap).map(([k, v]) => [v, k])
+  );
+
+  const getParam = (key: string) => searchParams.get(keyMap[key] || key);
+
+  const searchQuery = getParam('searchQuery') || '';
+  const selectedBrand = getParam('selectedBrand') || '';
+  const minPrice = Number(getParam('minPrice')) || 0;
+  const maxPrice = Number(getParam('maxPrice')) || 10000;
+  const sortOption = getParam('sortOption') || 'newest';
+  const selectedTagId = getParam('selectedTagId') || '';
 
   const categorySlugs = useMemo(() => {
     const cats = searchParams.get('categories') || searchParams.get('category') || '';
     return cats ? cats.split(',').filter(Boolean) : [];
   }, [searchParams]);
 
-  const updateParams = useCallback((updates: Partial<Record<string, string | string[] | number | null>>) => {
-    const newParams = new URLSearchParams(searchParams);
-    
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === null || value === undefined || value === '') {
-        newParams.delete(key);
-      } else if (Array.isArray(value)) {
-        if (value.length > 0) {
-          newParams.set(key, value.join(','));
+  const updateParams = useCallback((updates: Partial<Record<string, any>>) => {
+    // Start with a fresh URLSearchParams from the CURRENT state to avoid lost updates
+    setSearchParams((prev) => {
+      const newParams = new URLSearchParams(prev);
+      
+      Object.entries(updates).forEach(([key, value]) => {
+        const urlKey = keyMap[key] || key;
+        
+        if (value === null || value === undefined || value === '') {
+          newParams.delete(urlKey);
+        } else if (Array.isArray(value)) {
+          if (value.length > 0) {
+            newParams.set(urlKey, value.join(','));
+          } else {
+            newParams.delete(urlKey);
+          }
         } else {
-          newParams.delete(key);
+          newParams.set(urlKey, value.toString());
         }
-      } else {
-        newParams.set(key, value.toString());
-      }
-    });
 
-    // Handle special cases
-    if (updates.categorySlugs !== undefined) {
-      const slugs = updates.categorySlugs as string[];
-      if (slugs.length > 0) {
-        newParams.set('categories', slugs.join(','));
-      } else {
-        newParams.delete('categories');
-      }
-      newParams.delete('category'); // Ensure old singular key is removed
-    }
-
-    setSearchParams(newParams);
-  }, [searchParams, setSearchParams]);
+        // Specific cleanup for categories
+        if (urlKey === 'categories') {
+          newParams.delete('category');
+        }
+      });
+      
+      return newParams;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const clearAllFilters = useCallback(() => {
     setSearchParams(new URLSearchParams());
@@ -73,11 +90,11 @@ export function useProductSearchParams() {
     },
     updateParams,
     clearAllFilters,
-    setSearchQuery: (q: string) => updateParams({ q }),
-    setCategorySlugs: (slugs: string[]) => updateParams({ categorySlugs: slugs }),
-    setSelectedBrand: (brand: string) => updateParams({ brand }),
-    setPriceRange: (min: number, max: number) => updateParams({ minPrice: min, maxPrice: max }),
-    setSortOption: (sort: string) => updateParams({ sort }),
-    setSelectedTagId: (tag: string) => updateParams({ tag }),
+    setSearchQuery: (searchQuery: string) => updateParams({ searchQuery }),
+    setCategorySlugs: (categorySlugs: string[]) => updateParams({ categorySlugs }),
+    setSelectedBrand: (selectedBrand: string) => updateParams({ selectedBrand }),
+    setPriceRange: (minPrice: number, maxPrice: number) => updateParams({ minPrice, maxPrice }),
+    setSortOption: (sortOption: string) => updateParams({ sortOption }),
+    setSelectedTagId: (selectedTagId: string) => updateParams({ selectedTagId }),
   };
 }

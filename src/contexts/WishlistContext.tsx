@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from './AuthContext';
+import { handleFirestoreError, OperationType } from '../lib/error';
 
 interface WishlistContextType {
   wishlist: string[];
@@ -38,7 +39,7 @@ export const WishlistProvider = ({ children }: { children: React.ReactNode }) =>
     const q = query(collection(db, 'wishlist'), where('userId', '==', user.uid));
     const unsub = onSnapshot(q, (snap) => {
       setWishlist(snap.docs.map(doc => doc.data().productId));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'wishlist'));
     return unsub;
   }, [user]);
 

@@ -12,6 +12,7 @@ import {
 import { db } from '../firebase';
 import { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
+import { handleFirestoreError, OperationType } from '../lib/error';
 
 interface NotificationContextType {
   notifications: AppNotification[];
@@ -50,7 +51,7 @@ export const NotificationProvider = ({ children }: { children: React.ReactNode }
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AppNotification));
       setNotifications(data);
       setUnreadCount(data.filter(n => !n.read).length);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'notifications'));
     return unsub;
   }, [user]);
 
