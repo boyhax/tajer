@@ -29,7 +29,9 @@ import {
   LanguageContext, 
   SettingsContext, 
   ProductCard,
-  ProductCardVariant
+  ProductCardVariant,
+  ExploreProducts,
+  ExploreProductsProps
 } from "../App";
 import { Product, Store, Category, Tag } from "../types";
 import { config as appConfig } from "./config";
@@ -117,6 +119,7 @@ export type PuckConfig = {
     showFilters: boolean;
     enableSearch?: boolean;
     enableSort?: boolean;
+    restrictToFiltered?: boolean;
   };
   CategoriesExplore: {
     title?: string;
@@ -130,6 +133,19 @@ export type PuckConfig = {
     height: number;
   };
 };
+
+const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
+  <div
+    {...props}
+    ref={ref}
+    className={cn(
+      "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6 md:gap-10",
+      props.className
+    )}
+  >
+    {children}
+  </div>
+));
 
 export const config: Config<PuckConfig> = {
   components: {
@@ -514,26 +530,26 @@ export const config: Config<PuckConfig> = {
     ProductsExplore: {
       fields: {
         title: { type: "text" },
-        description: { type: "textarea" },
+        description: { type: "text" },
         image: { type: "text" },
         icon: { type: "text" },
         seeMoreLabel: { type: "text" },
         seeMorePath: { type: "text" },
-        layout: {
-          type: "select",
+        layout: { 
+          type: "radio", 
           options: [
             { label: "Grid", value: "grid" },
-            { label: "Carousel", value: "carousel" },
-          ]
+            { label: "Carousel", value: "carousel" }
+          ] 
         },
         cardVariant: {
           type: "select",
           options: [
             { label: "Default", value: "default" },
-            { label: "Modern", value: "modern" },
-            { label: "Cover", value: "cover" },
-            { label: "Glass", value: "glass" },
             { label: "Minimal", value: "minimal" },
+            { label: "Modern", value: "modern" },
+            { label: "Glass", value: "glass" },
+            { label: "Cover", value: "cover" },
             { label: "Local Delivery", value: "local-delivery" },
           ]
         },
@@ -545,214 +561,11 @@ export const config: Config<PuckConfig> = {
         limit: { type: "number" },
         showFilters: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
         enableSearch: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
-        enableSort: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] }
+        enableSort: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
+        restrictToFiltered: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] }
       },
-      render: ({ 
-        title, description, image, icon, seeMoreLabel, seeMorePath, 
-        layout, cardVariant, categoryIds = [], defaultTagId, defaultSearch, 
-        useUrlParams, enableVirtualScroll, limit = 8, 
-        showFilters = false, enableSearch = false, enableSort = false 
-      }) => {
-        const { products, categories, tags, loading } = useContext(DataContext);
-        const { t, lang } = useContext(LanguageContext);
-        const { appSettings } = useContext(SettingsContext);
-        const navigate = useNavigate();
-        const [searchParams] = useSearchParams();
-        
-        const [internalActiveCategory, setInternalActiveCategory] = useState<string>('all');
-        const [internalSearch, setInternalSearch] = useState('');
-        const [internalTag, setInternalTag] = useState<string>(defaultTagId || '');
- 
-        if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Fetching Products...</div>;
- 
-        const urlCategory = searchParams.get('category');
-        const urlSearch = searchParams.get('search');
-        const urlTag = searchParams.get('tag');
-
-        const activeCategory = useUrlParams ? (urlCategory || 'all') : internalActiveCategory;
-        const search = useUrlParams ? (urlSearch || '') : (internalSearch || defaultSearch || '');
-        const tag = useUrlParams ? (urlTag || '') : (internalTag || defaultTagId || '');
-
-        const filtered = products.filter(p => {
-          const categoryMatch = categoryIds.length === 0 || categoryIds.some(c => p.categories.includes(c.id));
-          const activeFilterMatch = activeCategory === 'all' || p.categories.includes(activeCategory);
-          const searchMatch = !search || t(p.locals.name).toLowerCase().includes(search.toLowerCase());
-          const tagMatch = !tag || p.tags.includes(tag);
-          return categoryMatch && activeFilterMatch && searchMatch && tagMatch;
-        });
-
-        const displayed = limit ? filtered.slice(0, limit) : filtered;
-  
-        const filterOptions = categoryIds.length > 0 
-          ? categories.filter(c => categoryIds.some(cid => cid.id === c.id))
-          : categories.slice(0, 6);
-
-        const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
-          <div
-            {...props}
-            ref={ref}
-            className={cn(
-              "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-6 md:gap-10",
-              props.className
-            )}
-          >
-            {children}
-          </div>
-        ));
-
-        const ProductCardComponent = ({ product }: { product: Product; key?: any }) => (
-          <ProductCard product={product} onSelect={(p) => navigate(`/product/${p.id}`)} variant={cardVariant} />
-        );
- 
-        return (
-          <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-            {(title || description || image || icon || seeMoreLabel) && (
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-                <div className="flex gap-6 items-start">
-                  {image && (
-                    <div className="w-24 h-24 md:w-32 md:h-32 rounded-[2rem] overflow-hidden shadow-2xl shrink-0">
-                      <img src={image} className="w-full h-full object-cover" alt="" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="flex items-center gap-4 mb-2">
-                      {icon && (
-                        <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center">
-                          <ImageIcon className="w-5 h-5" />
-                        </div>
-                      )}
-                      {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
-                    </div>
-                    {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
-                  </div>
-                </div>
-                {seeMoreLabel && (
-                  <button 
-                    onClick={() => {
-                      if (seeMorePath) {
-                        navigate(seeMorePath);
-                      } else {
-                        // Default redirection to shop with current filters
-                        const params = new URLSearchParams();
-                        if (activeCategory !== 'all') params.set('category', activeCategory);
-                        if (search) params.set('search', search);
-                        if (tag) params.set('tag', tag);
-                        navigate(`/shop?${params.toString()}`);
-                      }
-                    }}
-                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors pointer-events-auto"
-                  >
-                    {t(seeMoreLabel)}
-                    <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
-                      <ChevronRight className="w-4 h-4" />
-                    </div>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {(showFilters || enableSearch || enableSort) && (
-              <div className="space-y-6">
-                <div className="flex flex-col md:flex-row gap-4">
-                  {enableSearch && (
-                    <div className="relative flex-1 group">
-                      <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-black transition-colors" />
-                      <input 
-                        type="text"
-                        value={search}
-                        onPointerDown={e => e.stopPropagation()}
-                        onChange={(e) => {
-                          if (useUrlParams) {
-                            // URL params are handled by App.tsx search logic usually, 
-                            // but here we are inside a Puck component which might be on any page.
-                            // If we want it to update URL, we'd need to use setSearchParams.
-                          } else {
-                            setInternalSearch(e.target.value);
-                          }
-                        }}
-                        placeholder={t({ en: 'Search items...', ar: 'ابحث عن عناصر...' })}
-                        className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-[1.5rem] focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-widest"
-                      />
-                    </div>
-                  )}
-                  {enableSort && (
-                    <button className="flex items-center justify-center gap-2 px-6 py-4 bg-white border border-gray-100 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-sm">
-                      <ArrowUpDown className="w-4 h-4" />
-                      {t({ en: 'Sort', ar: 'ترتيب' })}
-                    </button>
-                  )}
-                </div>
-                
-                {showFilters && (
-                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    <button 
-                      onClick={() => !useUrlParams && setInternalActiveCategory('all')}
-                      className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === 'all' ? 'bg-black text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                    >
-                      {t({ en: 'All Items', ar: 'الكل' })}
-                    </button>
-                    {filterOptions.map(cat => (
-                      <button 
-                        key={cat.id}
-                        onClick={() => !useUrlParams && setInternalActiveCategory(cat.id)}
-                        className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeCategory === cat.id ? 'bg-black text-white shadow-xl scale-105' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
-                      >
-                        {t(cat.locals.title)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
- 
-            {layout === "carousel" ? (
-              <div className="w-full">
-                {displayed.length > 0 && (
-                  <Carousel 
-                    opts={{ align: "start", loop: displayed.length > 3, dragFree: true }}
-                    className="w-full"
-                    dir={lang === 'ar' ? 'rtl' : 'ltr'}
-                    key={`prod-carousel-${displayed.map(p => p.id).join(',')}`}
-                  >
-                    <CarouselContent>
-                      {displayed.map(product => (
-                        <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
-                           <ProductCardComponent product={product} />
-                        </CarouselItem>
-                      ))}
-                    </CarouselContent>
-                  </Carousel>
-                )}
-              </div>
-            ) : (
-              <div className="relative min-h-[400px]">
-                {enableVirtualScroll ? (
-                  <VirtuosoGrid
-                    useWindowScroll
-                    data={displayed}
-                    components={{
-                      List: GridContainer,
-                      Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
-                        <div {...props} ref={ref} className="p-1">
-                          {children}
-                        </div>
-                      ))
-                    }}
-                    itemContent={(index, product) => (
-                      <ProductCardComponent product={product} />
-                    )}
-                  />
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 md:gap-10">
-                    {displayed.map(product => (
-                      <ProductCardComponent key={product.id} product={product} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
+      render: (props: ExploreProductsProps) => {
+        return <ExploreProducts {...props} />;
       }
     },
     CategoriesExplore: {

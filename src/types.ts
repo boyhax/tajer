@@ -82,7 +82,7 @@ export interface Order {
   userId: string;
   items: CartItem[];
   totalAmount: number;
-  status: 'pending' | 'paid' | 'failed' | 'shipped' | 'delivered';
+  status: 'pending' | 'processing' | 'paid' | 'failed' | 'shipped' | 'delivered';
   deliveryStatus?: 'pending' | 'assigned' | 'picked_up' | 'delivered';
   paymentMethod: 'online' | 'cod';
   driverId?: string; // ID of the assigned driver
@@ -201,8 +201,8 @@ export interface DeliveryMethod {
 
 export interface AppSettings {
   paymentMethods: {
-    online: boolean;
-    cod: boolean;
+    online: { enabled: boolean; preTransaction: boolean };
+    cod: { enabled: boolean; preTransaction: boolean };
   };
   restrictDeliveryToRegions: boolean;
   supportedAddressModes: ('normal' | 'map')[];

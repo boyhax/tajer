@@ -50,6 +50,7 @@ import {
   CheckCircle,
   AlertCircle,
   BadgeDollarSign,
+  ArrowRight,
   ArrowLeft,
   Search,
   Filter,
@@ -291,13 +292,15 @@ export const DataContext = createContext<{
   tags: Tag[];
   brands: string[];
   loading: boolean;
+  onSelectProduct?: (p: Product) => void;
 }>({
   products: [],
   categories: [],
   stores: [],
   tags: [],
   brands: [],
-  loading: true
+  loading: true,
+  onSelectProduct: () => {}
 });
 
 export const SettingsContext = createContext<{
@@ -1009,6 +1012,291 @@ const BottomNav = ({ onNavigate, currentPage }: { onNavigate: (page: string) => 
 
 export type ProductCardVariant = 'default' | 'local-delivery' | 'minimal' | 'modern' | 'cover' | 'glass';
 
+const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
+  <div
+    {...props}
+    ref={ref}
+    className={cn(
+      "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 md:gap-x-8 md:gap-y-12",
+      props.className
+    )}
+  >
+    {children}
+  </div>
+));
+
+export interface ExploreProductsProps {
+  title?: string;
+  description?: string | LocalizedString;
+  image?: string;
+  icon?: string;
+  seeMoreLabel?: string | LocalizedString;
+  seeMorePath?: string;
+  layout?: 'grid' | 'carousel';
+  cardVariant?: ProductCardVariant;
+  categoryIds?: { id: string }[];
+  defaultTagId?: string;
+  defaultSearch?: string;
+  useUrlParams?: boolean;
+  enableVirtualScroll?: boolean;
+  limit?: number;
+  showFilters?: boolean;
+  enableSearch?: boolean;
+  enableSort?: boolean;
+  restrictToFiltered?: boolean;
+  onSelectProduct?: (p: Product) => void;
+}
+
+export const ExploreProducts = ({ 
+  title, description, image, icon, seeMoreLabel, seeMorePath, 
+  layout = 'grid', cardVariant = 'default', categoryIds = [], defaultTagId, defaultSearch, 
+  useUrlParams = false, enableVirtualScroll = false, limit, 
+  showFilters = false, enableSearch = false, enableSort = false,
+  restrictToFiltered = false,
+  onSelectProduct: externalOnSelect
+}: ExploreProductsProps) => {
+  const { products, categories, tags, loading, onSelectProduct: dataContextOnSelect } = useContext(DataContext);
+  const { t, lang } = useContext(LanguageContext);
+  const navigate = useNavigate();
+  
+  const { 
+    params: filterParams, 
+    setSearchQuery: setUrlSearch,
+    setCategorySlugs: setUrlCategorySlugs,
+    setSortOption: setUrlSort,
+    setSelectedTagId: setUrlTag
+  } = useProductSearchParams();
+
+  const [internalCategorySlugs, setInternalCategorySlugs] = useState<string[]>([]);
+  const [internalSearch, setInternalSearch] = useState(defaultSearch || '');
+  const [internalTag, setInternalTag] = useState(defaultTagId || '');
+  const [internalSort, setInternalSort] = useState('newest');
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+
+  if (loading) return <div className="py-20 text-center animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs">Fetching Products...</div>;
+
+  const activeCategorySlugs = useUrlParams ? filterParams.categorySlugs : internalCategorySlugs;
+  const activeSearch = useUrlParams ? filterParams.searchQuery : internalSearch;
+  const activeTag = useUrlParams ? filterParams.selectedTagId : internalTag;
+  const activeSort = useUrlParams ? filterParams.sortOption : internalSort;
+
+  const activeCategoryIds = useMemo(() => {
+    return categories
+      .filter(c => activeCategorySlugs.includes(c.slug))
+      .map(c => c.id);
+  }, [categories, activeCategorySlugs]);
+
+  const restrictedProducts = products.filter(p => {
+    const matchesCategoryBase = categoryIds.length === 0 || categoryIds.some(c => p.categories.includes(c.id));
+    const matchesTagBase = !defaultTagId || p.tags.includes(defaultTagId);
+    return matchesCategoryBase && matchesTagBase;
+  });
+
+  const filtered = restrictedProducts.filter(p => {
+    const activeCategoryMatch = activeCategoryIds.length === 0 || activeCategoryIds.some(id => p.categories.includes(id));
+    const searchMatch = !activeSearch || t(p.locals.name).toLowerCase().includes(activeSearch.toLowerCase()) || p.brand.toLowerCase().includes(activeSearch.toLowerCase());
+    const tagMatch = !activeTag || p.tags.includes(activeTag);
+    return activeCategoryMatch && searchMatch && tagMatch;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (activeSort === 'price-low') return a.price - b.price;
+    if (activeSort === 'price-high') return b.price - a.price;
+    return (b.createdAt || 0) - (a.createdAt || 0);
+  });
+
+  const displayed = limit ? sorted.slice(0, limit) : sorted;
+
+  const filterOptions = useMemo(() => {
+    if (restrictToFiltered && categoryIds.length > 0) {
+      return categories.filter(c => categoryIds.some(cid => cid.id === c.id));
+    }
+    return categories;
+  }, [categories, categoryIds, restrictToFiltered]);
+
+  const handleSelect = (product: Product) => {
+    if (externalOnSelect) externalOnSelect(product);
+    else if (dataContextOnSelect) dataContextOnSelect(product);
+    else navigate(`/product/${product.id}`);
+  };
+
+  const handleSearchChange = (val: string) => {
+    if (useUrlParams) setUrlSearch(val);
+    else setInternalSearch(val);
+  };
+
+  const handleCategoryToggle = (slug: string) => {
+    if (useUrlParams) {
+      const currentSlugs = filterParams.categorySlugs;
+      const nextSlugs = currentSlugs.includes(slug) 
+        ? currentSlugs.filter(s => s !== slug) 
+        : [...currentSlugs, slug];
+      setUrlCategorySlugs(nextSlugs);
+    } else {
+      setInternalCategorySlugs(prev => prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]);
+    }
+  };
+
+  const handleSortChange = (val: string) => {
+    if (useUrlParams) setUrlSort(val);
+    else setInternalSort(val);
+  };
+
+  const handleTagChange = (val: string) => {
+    if (useUrlParams) setUrlTag(val);
+    else setInternalTag(val);
+  };
+
+  return (
+    <div className="py-12 space-y-10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+       {(title || description || image || icon || seeMoreLabel) && (
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+          <div className="flex gap-6 items-start">
+            {image && (
+              <div className="w-24 h-24 md:w-32 md:h-32 rounded-[2rem] overflow-hidden shadow-2xl shrink-0">
+                <img src={image} className="w-full h-full object-cover" alt="" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                {icon && (
+                  <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center">
+                    <Icon icon={icon} className="w-5 h-5" />
+                  </div>
+                )}
+                {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+              </div>
+              {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+            </div>
+          </div>
+          {seeMoreLabel && (
+            <button 
+              onClick={() => seeMorePath ? navigate(seeMorePath) : navigate('/shop')}
+              className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+            >
+              {t(seeMoreLabel)}
+              <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </button>
+          )}
+        </div>
+      )}
+
+      {(enableSearch || showFilters || enableSort) && (
+        <div className="space-y-6">
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            {enableSearch && (
+              <div className="relative flex-1 group w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="text"
+                  placeholder={t({ en: 'Search collection...', ar: 'بحث في المجموعة...' })}
+                  value={activeSearch}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-gray-100 transition-all outline-none text-[10px] font-black uppercase"
+                />
+              </div>
+            )}
+            {showFilters && (
+              <button 
+                onClick={() => setShowFilterDrawer(true)}
+                className="w-full md:w-auto flex items-center justify-center gap-2 px-8 py-4 bg-black text-white rounded-2xl font-black text-[10px] uppercase shadow-xl"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                {t({ en: 'Filter', ar: 'تصفية' })}
+              </button>
+            )}
+          </div>
+
+          {!restrictToFiltered && filterOptions.length > 0 && (
+             <Carousel opts={{ align: "start", dragFree: true }} className="w-full">
+              <CarouselContent className="-ms-2">
+                <CarouselItem className="ps-2 basis-auto">
+                  <button 
+                    onClick={() => useUrlParams ? setUrlCategorySlugs([]) : setInternalCategorySlugs([])}
+                    className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeCategoryIds.length === 0 ? 'bg-black text-white shadow-xl' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                  >
+                    {t({ en: 'All Items', ar: 'الكل' })}
+                  </button>
+                </CarouselItem>
+                {filterOptions.slice(0, 15).map(cat => (
+                  <CarouselItem key={cat.id} className="ps-2 basis-auto">
+                    <button 
+                      onClick={() => handleCategoryToggle(cat.slug)}
+                      className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeCategoryIds.includes(cat.id) ? 'bg-black text-white shadow-xl' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                    >
+                      {t(cat.locals?.title || cat.name)}
+                    </button>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+            </Carousel>
+          )}
+        </div>
+      )}
+
+      <div className="relative min-h-[400px]">
+        {displayed.length > 0 ? (
+          layout === 'carousel' ? (
+             <Carousel opts={{ align: "start", loop: false }} className="w-full">
+              <CarouselContent>
+                {displayed.map(product => (
+                  <CarouselItem key={product.id} className="basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5">
+                     <ProductCard product={product} onSelect={handleSelect} variant={cardVariant} />
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+            </Carousel>
+          ) : enableVirtualScroll ? (
+            <VirtuosoGrid
+              useWindowScroll
+              data={displayed}
+              components={{
+                List: GridContainer,
+                Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
+                  <div {...props} ref={ref} className="p-1">
+                    {children}
+                  </div>
+                ))
+              }}
+              itemContent={(index, product) => (
+                <ProductCard product={product} onSelect={handleSelect} variant={cardVariant} />
+              )}
+            />
+          ) : (
+            <GridContainer>
+              {displayed.map(product => (
+                <ProductCard key={product.id} product={product} onSelect={handleSelect} variant={cardVariant} />
+              ))}
+            </GridContainer>
+          )
+        ) : (
+          <div className="py-20 text-center bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100">
+            <Search className="w-12 h-12 text-gray-200 mx-auto mb-6" />
+            <h3 className="text-xl font-black italic uppercase tracking-tighter mb-2">{t({ en: 'No products matched', ar: 'لا توجد منتجات مطابقة' })}</h3>
+            <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">{t({ en: 'Try adjusting your filters', ar: 'حاول تعديل الفلاتر' })}</p>
+          </div>
+        )}
+      </div>
+
+      {showFilterDrawer && (
+        <FilterDrawer 
+          onClose={() => setShowFilterDrawer(false)}
+          categories={filterOptions}
+          selectedCategoryIds={activeCategoryIds}
+          setSelectedCategoryId={handleCategoryToggle}
+          sortOption={activeSort}
+          setSortOption={handleSortChange}
+          tags={tags}
+          selectedTagId={activeTag}
+          setSelectedTagId={handleTagChange}
+        />
+      )}
+    </div>
+  );
+};
+
 export const ProductCard = ({ 
   product, 
   onSelect,
@@ -1037,18 +1325,14 @@ export const ProductCard = ({
 
   if (variant === 'cover') {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="group cursor-pointer relative aspect-[4/5] rounded-[2rem] overflow-hidden transition-all duration-500 shadow-lg"
+      <div 
+        className="group cursor-pointer relative aspect-[4/5] rounded-[2rem] overflow-hidden shadow-lg hover:shadow-xl"
         onClick={() => onSelect(product)}
-        whileHover={{ scale: 0.98 }}
       >
         <img 
           src={product.image || undefined} 
           alt={t(product.locals.name)} 
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
@@ -1060,13 +1344,13 @@ export const ProductCard = ({
                 e.stopPropagation();
                 toggleWishlist(product.id);
               }}
-              className={`p-2.5 rounded-2xl shadow-xl backdrop-blur-md transition-all ${
+              className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
                 isInWishlist(product.id) 
                   ? 'bg-red-500 text-white' 
                   : 'bg-white/20 text-white hover:bg-red-500'
               }`}
             >
-              <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+              <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
             </button>
           )}
         </div>
@@ -1077,36 +1361,35 @@ export const ProductCard = ({
             <p className="text-white/60 text-[10px] font-black uppercase tracking-[0.3em]">{product.brand}</p>
           </div>
           <div className="flex items-center justify-between">
-            <span className="font-black text-2xl tracking-tighter">{product.price} <span className="text-[10px] text-white/50">{t(appSettings.currency?.symbol || config.currency.symbol)}</span></span>
+            <div className="flex items-baseline gap-1">
+              <span className="font-black text-3xl md:text-4xl tracking-tighter">{product.price}</span>
+              <span className="text-xs md:text-sm text-white/50 font-bold">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+            </div>
             <button 
               onClick={(e) => {
                 e.stopPropagation();
                 addToCart(product);
               }}
-              className="w-12 h-12 bg-emerald-500 text-white rounded-[1.25rem] flex items-center justify-center shadow-2xl hover:bg-emerald-600 transition-all active:scale-90"
+              className="w-12 h-12 md:w-14 md:h-14 bg-emerald-500 text-white rounded-[1.25rem] flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95"
             >
-              <ShoppingCart className="w-6 h-6" />
+              <ShoppingCart className="w-6 h-6 md:w-7 md:h-7" />
             </button>
           </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   if (variant === 'modern') {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+      <div 
         className="group cursor-pointer"
         onClick={() => onSelect(product)}
-        whileHover={{ y: -5 }}
       >
-        <div className="aspect-[3/4] relative rounded-[3rem] overflow-hidden bg-gray-50 mb-6 shadow-sm group-hover:shadow-2xl transition-all duration-500">
+        <div className="aspect-[3/4] relative rounded-[3rem] overflow-hidden bg-gray-50 mb-6 shadow-sm hover:shadow-xl">
           <img 
             src={product.image || undefined} 
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
+            className="w-full h-full object-cover" 
             alt={t(product.locals.name)} 
             referrerPolicy="no-referrer"
           />
@@ -1117,11 +1400,11 @@ export const ProductCard = ({
                   e.stopPropagation();
                   toggleWishlist(product.id);
                 }}
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
+                className={`w-11 h-11 md:w-13 md:h-13 rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
                   isInWishlist(product.id) ? 'bg-red-500 text-white' : 'bg-white/80 text-gray-400 hover:text-red-500'
                 }`}
               >
-                <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+                <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
               </button>
             )}
           </div>
@@ -1139,69 +1422,61 @@ export const ProductCard = ({
            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-1">{product.brand}</p>
            <h4 className="text-xl font-black italic uppercase tracking-tighter leading-none mb-3 group-hover:text-emerald-600 transition-colors line-clamp-1">{t(product.locals.name)}</h4>
            <div className="flex items-center gap-2">
-             <span className="text-2xl font-black tracking-tighter">{product.price}</span>
-             <span className="text-[10px] font-bold text-gray-300 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+             <span className="text-3xl font-black tracking-tighter text-black">{product.price}</span>
+             <span className="text-xs font-bold text-gray-400 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
            </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   if (variant === 'glass') {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="group cursor-pointer relative aspect-[3/4] rounded-[2.5rem] overflow-hidden transition-all duration-500 bg-white/5 border border-white/20 backdrop-blur-sm shadow-xl"
+      <div 
+        className="group cursor-pointer relative aspect-[3/4] rounded-[2.5rem] overflow-hidden bg-white/5 border border-white/20 backdrop-blur-sm shadow-xl"
         onClick={() => onSelect(product)}
-        whileHover={{ scale: 1.02 }}
       >
         <img 
           src={product.image || undefined} 
           alt={t(product.locals.name)} 
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-        <div className="absolute inset-x-0 bottom-0 p-6 bg-white/10 backdrop-blur-xl border-t border-white/20 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
+        <div className="absolute inset-x-0 bottom-0 p-6 bg-white/10 backdrop-blur-xl border-t border-white/20">
            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 mb-1">{product.brand}</p>
            <h4 className="text-lg font-black text-white italic uppercase tracking-tighter leading-none mb-4 line-clamp-1">{t(product.locals.name)}</h4>
-           <div className="flex items-center justify-between">
+           <div className="flex items-center justify-between gap-4">
              <div className="flex items-baseline gap-1 shrink-0">
-               <span className="text-xl font-black text-white">{product.price}</span>
-               <span className="text-[8px] font-bold text-white/50 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+               <span className="text-2xl md:text-3xl font-black text-white italic tracking-tighter">{product.price}</span>
+               <span className="text-[10px] font-bold text-white/50 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
              </div>
              <button 
                 onClick={(e) => {
                   e.stopPropagation();
                   addToCart(product);
                 }}
-                className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg hover:bg-emerald-600 transition-all active:scale-90"
+                className="w-11 h-11 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95"
               >
-                <ShoppingCart className="w-5 h-5" />
+                <ShoppingCart className="w-6 h-6" />
               </button>
            </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   if (variant === 'local-delivery') {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="group cursor-pointer relative aspect-[4/5] rounded-2xl md:rounded-[2rem] overflow-hidden transition-all duration-500 shadow-lg"
+      <div 
+        className="group cursor-pointer relative aspect-[4/5] rounded-2xl md:rounded-[2rem] overflow-hidden shadow-lg"
         onClick={() => onSelect(product)}
-        whileHover={{ scale: 0.98 }}
       >
         <img 
           src={product.image || undefined} 
           alt={t(product.locals.name)} 
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
         
@@ -1216,13 +1491,13 @@ export const ProductCard = ({
                 e.stopPropagation();
                 toggleWishlist(product.id);
               }}
-              className={`p-1.5 md:p-2 rounded-xl shadow-xl backdrop-blur-md transition-all ${
+              className={`w-9 h-9 md:w-11 md:h-11 rounded-xl md:rounded-2xl flex items-center justify-center shadow-xl backdrop-blur-md transition-all ${
                 isInWishlist(product.id) 
                   ? 'bg-red-500 text-white' 
                   : 'bg-white/20 text-white hover:bg-red-500'
               }`}
             >
-              <Heart className={`w-3 h-3 md:w-3.5 md:h-3.5 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+              <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
             </button>
           )}
         </div>
@@ -1234,61 +1509,47 @@ export const ProductCard = ({
             <p className="text-white/60 text-[7px] md:text-[8px] font-bold uppercase tracking-widest">{product.brand}</p>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="font-black text-lg md:text-2xl tracking-tighter">{product.price}</span>
-              <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-baseline gap-1 shrink-0">
+              <span className="font-black text-2xl md:text-3xl tracking-tighter">{product.price}</span>
+              <span className="text-[10px] md:text-xs font-black text-white/60 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 md:gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest">
-                {product.rating && (
-                  <div className="flex items-center gap-0.5 md:gap-1 bg-white/10 backdrop-blur-md px-1 py-0.5 md:px-1.5 rounded-md">
-                    <Star className="w-2.5 h-2.5 md:w-3 md:h-3 text-amber-400 fill-current" />
-                    <span>{product.rating}</span>
-                  </div>
-                )}
-              </div>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  addToCart(product);
-                }}
-                className="w-8 h-8 md:w-10 md:h-10 bg-emerald-500 text-white rounded-lg md:rounded-xl flex items-center justify-center shadow-2xl hover:bg-emerald-600 hover:scale-110 active:scale-95 transition-all"
-              >
-                <ShoppingCart className="w-4 h-4 md:w-5 h-5" />
-              </button>
-            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                addToCart(product);
+              }}
+              className="w-10 h-10 md:w-12 md:h-12 bg-emerald-500 text-white rounded-xl md:rounded-2xl flex items-center justify-center shadow-2xl hover:scale-110 transition-transform active:scale-95"
+            >
+              <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
+            </button>
           </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   // Minimal Variant (for category sections)
   if (variant === 'minimal') {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="group cursor-pointer relative aspect-square rounded-xl md:rounded-2xl overflow-hidden transition-all duration-500 shadow-md"
+      <div 
+        className="group cursor-pointer relative aspect-square rounded-xl md:rounded-2xl overflow-hidden shadow-md"
         onClick={() => onSelect(product)}
-        whileHover={{ scale: 0.98 }}
       >
         <img 
           src={product.image || undefined} 
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+          className="absolute inset-0 w-full h-full object-cover" 
           referrerPolicy="no-referrer" 
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
         
-        <div className="absolute bottom-0 left-0 right-0 p-1.5 md:p-2 text-white flex items-end justify-between">
-          <div className="flex-1 min-w-0 pr-8">
-            <h4 className="text-[9px] md:text-[10px] font-black truncate tracking-tight">{t(product.locals.name)}</h4>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] md:text-[13px] font-black">{product.price}</span>
-              <span className="text-[7px] md:text-[8px] font-bold text-white/60 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
+        <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 text-white flex items-end justify-between bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+          <div className="flex-1 min-w-0 pr-2">
+            <h4 className="text-[11px] md:text-sm font-black truncate tracking-tight mb-1">{t(product.locals.name)}</h4>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg md:text-2xl font-black">{product.price}</span>
+              <span className="text-[8px] md:text-[10px] font-bold text-white/60 uppercase">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
             </div>
           </div>
           <button 
@@ -1296,73 +1557,73 @@ export const ProductCard = ({
               e.stopPropagation();
               addToCart(product);
             }}
-            className="w-7 h-7 md:w-8 md:h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all z-10"
+            className="w-10 h-10 md:w-12 md:h-12 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95 shrink-0"
           >
-            <ShoppingCart className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
           </button>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   // Default Variant (Clean/Minimal)
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="group cursor-pointer relative aspect-[4/5] rounded-[1.5rem] md:rounded-[2rem] overflow-hidden transition-all duration-500 shadow-sm"
+    <div 
+      className="group cursor-pointer relative aspect-[4/5] rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-sm"
       onClick={() => onSelect(product)}
-      whileHover={{ y: -4 }}
     >
       <img 
         src={product.image || undefined} 
         alt={t(product.locals.name)} 
-        className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+        className="absolute inset-0 w-full h-full object-cover"
         referrerPolicy="no-referrer"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
       
-      <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1 md:gap-2 z-10">
-        <div className="bg-white/20 backdrop-blur-md px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-[14px] font-black text-white shadow-xl tracking-widest">
-          {product.price} {t(appSettings.currency?.symbol || config.currency.symbol)}
+      <div className="absolute top-3 left-3 md:top-6 md:left-6 flex flex-col gap-1 md:gap-2 z-10">
+        <div className="bg-white px-3 py-1.5 md:px-5 md:py-2.5 rounded-full text-sm md:text-xl font-black text-black shadow-2xl border border-gray-100 flex items-baseline gap-1">
+          <span className="tracking-tighter">{product.price}</span>
+          <span className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">{t(appSettings.currency?.symbol || config.currency.symbol)}</span>
         </div>
       </div>
 
-      <div className="absolute top-2 right-2 md:top-3 md:right-3 z-10">
+      <div className="absolute top-2 right-2 md:top-3 md:right-3 z-20">
         {user && (
           <button 
             onClick={(e) => {
               e.stopPropagation();
               toggleWishlist(product.id);
             }}
-            className={`p-1.5 md:p-2 rounded-full shadow-xl backdrop-blur-md transition-all ${
+            className={`w-9 h-9 md:w-11 md:h-11 rounded-full shadow-xl backdrop-blur-md transition-all flex items-center justify-center ${
               isInWishlist(product.id) 
                 ? 'bg-red-500 text-white' 
                 : 'bg-white/20 text-white hover:bg-red-50'
             }`}
           >
-            <Heart className={`w-2.5 h-2.5 md:w-3 h-3 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+            <Heart className={`w-5 h-5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
           </button>
         )}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 text-white">
-        <h3 className="font-black text-xs md:text-sm tracking-tighter line-clamp-1">{t(product.locals.name)}</h3>
-        <p className="text-white/60 text-[7px] md:text-[8px] font-bold uppercase tracking-widest">{product.brand}</p>
-      </div>
+      <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 text-white bg-gradient-to-t from-black/95 via-black/40 to-transparent">
+        <div className="flex items-end justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-black text-sm md:text-lg tracking-tight line-clamp-1 mb-1">{t(product.locals.name)}</h3>
+            <p className="text-white/50 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">{product.brand}</p>
+          </div>
 
-      {/* Quick Add Button */}
-      <button 
-        onClick={(e) => {
-          e.stopPropagation();
-          addToCart(product);
-        }}
-        className="absolute bottom-2 right-2 md:bottom-4 md:right-4 w-10 h-10 md:w-12 md:h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all z-20"
-      >
-        <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
-      </button>
-    </motion.div>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(product);
+            }}
+            className="w-11 h-11 md:w-14 md:h-14 bg-emerald-500 text-white rounded-[1.25rem] md:rounded-[1.5rem] flex items-center justify-center shadow-2xl z-20 hover:scale-110 transition-transform active:scale-95 shrink-0"
+          >
+            <ShoppingCart className="w-5 h-5 md:w-7 md:h-7" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -1396,9 +1657,7 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
         <button onClick={onBack} className="flex items-center gap-1 text-gray-500 mb-3 md:mb-8 hover:text-black transition-colors text-xs md:text-sm">
           <ArrowLeft className="w-3 h-3 md:w-4 md:h-4" /> {t({ en: 'Back to Shop', ar: 'العودة للمتجر' })}
         </button>
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+        <div 
           className="aspect-square md:aspect-[4/5] bg-gray-100 rounded-xl md:rounded-3xl overflow-hidden relative"
         >
           <img 
@@ -1410,13 +1669,13 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
           {user && (
             <button 
               onClick={() => toggleWishlist(product.id)}
-              className={`absolute top-2 right-2 p-1.5 md:top-6 md:right-6 md:p-4 rounded-lg md:rounded-2xl shadow-lg backdrop-blur-md transition-all ${
+              className={`absolute top-2 right-2 p-1.5 md:top-6 md:right-6 md:p-4 rounded-lg md:rounded-2xl shadow-lg backdrop-blur-md transition-all flex items-center justify-center ${
                 isInWishlist(product.id) 
                   ? 'bg-red-500 text-white' 
                   : 'bg-white/90 text-gray-400 hover:text-red-500'
               }`}
             >
-              <Heart className={`w-3.5 h-3.5 md:w-6 md:h-6 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
+              <Heart className={`w-5 h-5 md:w-8 md:h-8 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
             </button>
           )}
           {hasDiscount && (
@@ -1424,7 +1683,7 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
               {product.discount}% OFF
             </div>
           )}
-        </motion.div>
+        </div>
       </div>
       <div className="flex-1 py-2 md:py-12">
         <span className="text-[8px] md:text-xs font-bold uppercase tracking-widest text-gray-400 mb-0.5 md:mb-2 block">{product.brand}</span>
@@ -1504,9 +1763,9 @@ const ProductDetail = ({ product, onBack }: { product: Product, onBack: () => vo
               addToCart(itemToCart);
             }
           }}
-          className="w-full bg-black text-white py-3.5 md:py-6 rounded-xl md:rounded-3xl font-bold text-base md:text-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl active:scale-[0.98]"
+          className="w-full bg-black text-white py-3.5 md:py-6 rounded-xl md:rounded-3xl font-bold text-base md:text-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2 md:gap-3 shadow-lg hover:shadow-xl active:scale-[0.98]"
         >
-          <ShoppingCart className="w-4 h-4 md:w-6 md:h-6" /> {t({ en: 'Add to Shopping Bag', ar: 'أضف إلى حقيبة التسوق' })}
+          <ShoppingCart className="w-5 h-5 md:w-7 md:h-7" /> {t({ en: 'Add to Shopping Bag', ar: 'أضف إلى حقيبة التسوق' })}
         </button>
       </div>
     </div>
@@ -1986,10 +2245,10 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
   }, [deliveryMethods]);
 
   useEffect(() => {
-    if (!appSettings.paymentMethods.online && appSettings.paymentMethods.cod) {
+    if (!appSettings.paymentMethods.online.enabled && appSettings.paymentMethods.cod.enabled) {
       setPaymentMethod('cod');
     }
-  }, [appSettings.paymentMethods.online, appSettings.paymentMethods.cod]);
+  }, [appSettings.paymentMethods.online.enabled, appSettings.paymentMethods.cod.enabled]);
 
   const [selectedRegionId, setSelectedRegionId] = useState(addressDetails?.regionId || '');
 
@@ -2032,6 +2291,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
 
     setLoading(true);
     try {
+      const isPreTransaction = paymentMethod === 'online' ? appSettings.paymentMethods.online.preTransaction : appSettings.paymentMethods.cod.preTransaction;
       const orderData = cleanObject({
         userId: user.uid,
         items: cart.map(item => ({
@@ -2041,7 +2301,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
           quantity: item.quantity
         })),
         totalAmount: total,
-        status: paymentMethod === 'cod' ? 'processing' : 'pending',
+        status: isPreTransaction ? 'pending' : 'processing',
         paymentMethod,
         deliveryMethodId: selectedMethodId,
         createdAt: serverTimestamp(),
@@ -2056,7 +2316,7 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
       });
       const orderRef = await addDoc(collection(db, 'orders'), orderData);
       
-      if (paymentMethod === 'cod') {
+      if (!isPreTransaction) {
         clearCart();
         onComplete(orderRef.id);
         return;
@@ -3847,6 +4107,44 @@ const DriverDashboard = () => {
           </div>
         ))}
       </div>
+    </div>
+  );
+};
+
+const OrderStatusBadge = ({ status, deliveryStatus, t }: { status: string, deliveryStatus?: string, t: any }) => {
+  const getStatusConfig = () => {
+    switch (status) {
+      case 'paid': return { bg: 'bg-emerald-100', text: 'text-emerald-700', label: { en: 'Paid', ar: 'مدفوع' } };
+      case 'processing': return { bg: 'bg-blue-100', text: 'text-blue-700', label: { en: 'Processing', ar: 'قيد التنفيذ' } };
+      case 'shipped': return { bg: 'bg-purple-100', text: 'text-purple-700', label: { en: 'Shipped', ar: 'تم الشحن' } };
+      case 'delivered': return { bg: 'bg-green-100', text: 'text-green-700', label: { en: 'Delivered', ar: 'تم التوصيل' } };
+      case 'failed': return { bg: 'bg-rose-100', text: 'text-rose-700', label: { en: 'Failed', ar: 'فشل' } };
+      default: return { bg: 'bg-amber-100', text: 'text-amber-700', label: { en: 'Pending', ar: 'معلق' } };
+    }
+  };
+
+  const getDeliveryConfig = () => {
+    switch (deliveryStatus) {
+      case 'assigned': return { bg: 'bg-indigo-100', text: 'text-indigo-700', label: { en: 'Driver Assigned', ar: 'تم تعيين سائق' } };
+      case 'picked_up': return { bg: 'bg-cyan-100', text: 'text-cyan-700', label: { en: 'Picked Up', ar: 'تم الاستلام' } };
+      case 'delivered': return { bg: 'bg-green-100', text: 'text-green-700', label: { en: 'Delivered', ar: 'تم التوصيل' } };
+      default: return null;
+    }
+  };
+
+  const sc = getStatusConfig();
+  const dc = getDeliveryConfig();
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-wider ${sc.bg} ${sc.text}`}>
+        {t(sc.label)}
+      </span>
+      {dc && (
+        <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-wider ${dc.bg} ${dc.text}`}>
+          {t(dc.label)}
+        </span>
+      )}
     </div>
   );
 };
@@ -6217,33 +6515,60 @@ const AdminPanel = ({
                 {t({ en: 'Payment Methods', ar: 'طرق الدفع' })}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <CreditCard className="w-5 h-5" />
-                    <span className="font-bold">{t({ en: 'Online Payment', ar: 'الدفع الإلكتروني' })}</span>
+                <div className="flex flex-col gap-4 p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5" />
+                      <span className="font-bold">{t({ en: 'Online Payment', ar: 'الدفع الإلكتروني' })}</span>
+                    </div>
+                    <button 
+                      onClick={() => updateAppSettings({
+                        paymentMethods: { ...appSettings.paymentMethods, online: { ...appSettings.paymentMethods.online, enabled: !appSettings.paymentMethods.online.enabled } }
+                      })}
+                      className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.online.enabled ? 'bg-black' : 'bg-gray-300'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.online.enabled ? 'right-1' : 'left-1'}`} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => updateAppSettings({
-                      paymentMethods: { ...appSettings.paymentMethods, online: !appSettings.paymentMethods.online }
-                    })}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.online ? 'bg-black' : 'bg-gray-300'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.online ? 'right-1' : 'left-1'}`} />
-                  </button>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <span className="text-xs text-gray-500 font-bold uppercase">{t({ en: 'Pre-Transaction', ar: 'عملية مسبقة' })}</span>
+                    <button 
+                      onClick={() => updateAppSettings({
+                        paymentMethods: { ...appSettings.paymentMethods, online: { ...appSettings.paymentMethods.online, preTransaction: !appSettings.paymentMethods.online.preTransaction } }
+                      })}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${appSettings.paymentMethods.online.preTransaction ? 'bg-blue-500' : 'bg-gray-300'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.online.preTransaction ? 'right-0.5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                  <div className="flex items-center gap-3">
-                    <ShoppingBag className="w-5 h-5" />
-                    <span className="font-bold">{t({ en: 'Cash on Delivery', ar: 'الدفع عند الاستلام' })}</span>
+
+                <div className="flex flex-col gap-4 p-4 bg-gray-50 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <ShoppingBag className="w-5 h-5" />
+                      <span className="font-bold">{t({ en: 'Cash on Delivery', ar: 'الدفع عند الاستلام' })}</span>
+                    </div>
+                    <button 
+                      onClick={() => updateAppSettings({
+                        paymentMethods: { ...appSettings.paymentMethods, cod: { ...appSettings.paymentMethods.cod, enabled: !appSettings.paymentMethods.cod.enabled } }
+                      })}
+                      className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.cod.enabled ? 'bg-black' : 'bg-gray-300'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.cod.enabled ? 'right-1' : 'left-1'}`} />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => updateAppSettings({
-                      paymentMethods: { ...appSettings.paymentMethods, cod: !appSettings.paymentMethods.cod }
-                    })}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.paymentMethods.cod ? 'bg-black' : 'bg-gray-300'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.cod ? 'right-1' : 'left-1'}`} />
-                  </button>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                    <span className="text-xs text-gray-500 font-bold uppercase">{t({ en: 'Pre-Transaction', ar: 'عملية مسبقة' })}</span>
+                    <button 
+                      onClick={() => updateAppSettings({
+                        paymentMethods: { ...appSettings.paymentMethods, cod: { ...appSettings.paymentMethods.cod, preTransaction: !appSettings.paymentMethods.cod.preTransaction } }
+                      })}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${appSettings.paymentMethods.cod.preTransaction ? 'bg-blue-500' : 'bg-gray-300'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${appSettings.paymentMethods.cod.preTransaction ? 'right-0.5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -6403,8 +6728,8 @@ const AdminPanel = ({
                     <p className="font-bold text-lg">{order.totalAmount} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Status', ar: 'الحالة' })}</p>
-                    <p className="text-sm font-bold">{order.deliveryStatus || t({ en: 'Pending Assignment', ar: 'قيد الإسناد' })}</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">{t({ en: 'Status', ar: 'الحالة' })}</p>
+                    <OrderStatusBadge status={order.status} deliveryStatus={order.deliveryStatus} t={t} />
                   </div>
                 </div>
                 
@@ -6723,12 +7048,7 @@ const OrdersPage = () => {
                 <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 md:mb-1">{t({ en: 'Order ID', ar: 'رقم الطلب' })}</div>
                 <div className="font-mono text-[8px] md:text-sm">{order.id}</div>
               </div>
-              <div className={`px-1 py-0.5 md:px-3 md:py-1 rounded-full text-[8px] md:text-[10px] font-bold uppercase ${
-                order.status === 'paid' ? 'bg-green-100 text-green-600' : 
-                order.status === 'pending' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600'
-              }`}>
-                {t({ en: order.status, ar: order.status === 'paid' ? 'مدفوع' : order.status === 'pending' ? 'قيد الانتظار' : 'فشل' })}
-              </div>
+              <OrderStatusBadge status={order.status} deliveryStatus={order.deliveryStatus} t={t} />
             </div>
             <div className="space-y-0.5 md:space-y-2">
               {order.items.map((item, idx) => (
@@ -7280,19 +7600,6 @@ function MainApp() {
     }
   };
 
-  const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
-    <div
-      {...props}
-      ref={ref}
-      className={cn(
-        "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 md:gap-x-8 md:gap-y-12",
-        props.className
-      )}
-    >
-      {children}
-    </div>
-  ));
-
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
   const updateAppSettings = async (settings: Partial<AppSettings>) => {
@@ -7429,6 +7736,14 @@ function MainApp() {
     const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
       if (snap.exists()) {
         const data = snap.data() as AppSettings;
+        // Migration for old paymentMethods format
+        const pm = data.paymentMethods as any;
+        if (pm && (typeof pm.online === 'boolean' || typeof pm.cod === 'boolean')) {
+          data.paymentMethods = {
+            online: { enabled: !!pm.online, preTransaction: true },
+            cod: { enabled: !!pm.cod, preTransaction: false }
+          };
+        }
         setAppSettings({
           ...data,
           supportedAddressModes: data.supportedAddressModes || ['normal', 'map'],
@@ -7585,6 +7900,21 @@ function MainApp() {
     }
   }, [searchParams, user]);
 
+  const langContextValue = useMemo(() => ({ lang, setLang, t }), [lang, t]);
+  const settingsContextValue = useMemo(() => ({ appSettings, updateAppSettings }), [appSettings]);
+  const dataContextValue = useMemo(() => ({ 
+    products, 
+    categories, 
+    stores, 
+    tags, 
+    brands, 
+    loading: dataLoading,
+    onSelectProduct: setSelectedProduct 
+  }), [products, categories, stores, tags, brands, dataLoading, setSelectedProduct]);
+  const authContextValue = useMemo(() => ({ 
+    user, profile, loading, signIn, signInWithPhone, verifyCode, logout 
+  }), [user, profile, loading]);
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-white" style={{ backgroundColor: config.theme.background }}>
@@ -7601,10 +7931,10 @@ function MainApp() {
   }
 
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      <SettingsContext.Provider value={{ appSettings, updateAppSettings }}>
-        <DataContext.Provider value={{ products, categories, stores, tags, brands, loading: dataLoading }}>
-          <AuthContext.Provider value={{ user, profile, loading, signIn, signInWithPhone, verifyCode, logout }}>
+    <LanguageContext.Provider value={langContextValue}>
+      <SettingsContext.Provider value={settingsContextValue}>
+        <DataContext.Provider value={dataContextValue}>
+          <AuthContext.Provider value={authContextValue}>
           {profile?.isBanned ? (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 text-center">
             <div className="max-w-md space-y-6">
@@ -7672,7 +8002,6 @@ function MainApp() {
 
                 <Routes>
                   <Route path="/" element={
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                       <div className="px-1 md:px-0">
                         <PuckPage pageId="home" onNavigate={setCurrentPage} />
                         <div className="max-w-7xl mx-auto px-6 py-20">
@@ -7687,117 +8016,19 @@ function MainApp() {
                            </div>
                         </div>
                       </div>
-                    </motion.div>
                   } />
 
                   <Route path="/shop" element={
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
                       <div className="max-w-7xl mx-auto px-4 md:px-6">
                         <PuckPage pageId="shop" onNavigate={setCurrentPage} />
-                        {/* ... (rest of search/filter/grid logic) ... */}
-                        {/* I will keep the actual JSX here but it's long. I'll use a placeholder and then fill it if needed, or just do the full replacement if it fits. */}
-                        {/* Re-including the shop logic for completeness */}
-                        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl -mx-4 px-4 md:mx-0 md:px-0 border-b border-gray-100 shadow-sm mb-12">
-                          <div className="max-w-4xl mx-auto py-3 space-y-4">
-                            <div className="flex items-center gap-2">
-                              <div className="relative flex-1 group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 group-focus-within:text-black transition-colors" />
-                                <input 
-                                  type="text"
-                                  placeholder={t({ en: 'Search...', ar: 'بحث...' })}
-                                  value={searchQuery}
-                                  onChange={(e) => setSearchQuery(e.target.value)}
-                                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-transparent rounded-full focus:bg-white focus:border-gray-100 focus:ring-4 focus:ring-black/5 transition-all outline-none text-[10px] font-black uppercase tracking-tight"
-                                />
-                              </div>
-                              <div className="flex gap-1.5">
-                                <button 
-                                  onClick={() => setShowFilterDrawer(true)}
-                                  className="flex items-center justify-center w-9 h-9 bg-black text-white rounded-full shadow-lg hover:scale-110 transition-all shrink-0"
-                                >
-                                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                                </button>
-                                <button className="flex items-center justify-center w-9 h-9 bg-white border border-gray-100 rounded-full shadow-sm hover:bg-gray-50 transition-all shrink-0">
-                                  <ArrowUpDown className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                            {/* Categories Carousel */}
-                            {categories && categories.length > 0 && (
-                              <Carousel opts={{ align: "start", loop: false, dragFree: true }} className="w-full" dir={lang === 'ar' ? 'rtl' : 'ltr'} key={`cat-carousel-${categories.length}`}>
-                                <CarouselContent className="-ms-2">
-                                  <CarouselItem className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                    <button onClick={() => setSelectedCategoryId('')} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryIds.length === 0 ? 'ring-2 ring-emerald-500' : ''}`}>
-                                      <div className={`absolute inset-0 transition-colors flex flex-col items-center justify-center gap-1 ${selectedCategoryIds.length === 0 ? 'bg-black text-white' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                                         <ShoppingBag className="w-4 h-4" />
-                                      </div>
-                                    </button>
-                                    <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryIds.length === 0 ? 'text-black' : 'text-gray-400'}`}>{t({ en: 'All', ar: 'الكل' })}</p>
-                                  </CarouselItem>
-                                  {categories.map(cat => (
-                                    <CarouselItem key={cat.id} className="ps-2 basis-1/5 md:basis-[10%] lg:basis-[8%]">
-                                      <button onClick={() => setSelectedCategoryId(cat.id)} className={`w-full aspect-square rounded-full transition-all relative overflow-hidden group shadow-sm ${selectedCategoryIds.includes(cat.id) ? 'ring-2 ring-emerald-500' : ''}`}>
-                                        {cat.bannerImageUrl && <img src={cat.bannerImageUrl} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={t(cat.name)} />}
-                                        <div className={`absolute inset-0 flex flex-col items-center justify-center text-center p-2 transition-all ${selectedCategoryIds.includes(cat.id) ? 'bg-black/60' : 'bg-black/20 group-hover:bg-black/40'}`}></div>
-                                      </button>
-                                      <p className={`text-[8px] font-black uppercase text-center mt-1 truncate px-[2px] transition-colors ${selectedCategoryIds.includes(cat.id) ? 'text-black' : 'text-gray-400'}`}>{t(cat.name)}</p>
-                                    </CarouselItem>
-                                  ))}
-                                </CarouselContent>
-                              </Carousel>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12 border-t border-gray-100 pt-8">
-                          <div className="flex items-center gap-4">
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">{t({ en: 'Currently Viewing', ar: 'تشاهد الآن' })}:</span>
-                            <div className="flex flex-wrap gap-2">
-                              <span className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-emerald-100">{filteredProducts.length} {t({ en: 'Products', ar: 'منتجات' })}</span>
-                              {(selectedCategoryIds.length > 0 || selectedBrand || selectedTagId || searchQuery || priceRange[0] > 0 || priceRange[1] < 10000) && (
-                                <button onClick={() => { 
-                                  setSelectedCategoryId(''); 
-                                  setSelectedBrand(''); 
-                                  setSelectedTagId(''); 
-                                  setSearchQuery(''); 
-                                  setPriceRange(0, 10000);
-                                }} className="bg-red-50 text-red-500 px-4 py-2 rounded-full font-black text-[9px] uppercase border border-red-100 flex items-center gap-2 hover:bg-red-100 transition-colors"><X className="w-3 h-3" /> {t({ en: 'Reset All', ar: 'مسح الكل' })}</button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="relative min-h-[600px]">
-                          {filteredProducts.length > 0 ? (
-                            <VirtuosoGrid
-                              useWindowScroll
-                              data={filteredProducts}
-                              components={{
-                                List: GridContainer,
-                                Item: React.forwardRef(({ children, ...props }: any, ref: any) => (
-                                  <div {...props} ref={ref} className="p-1">
-                                    {children}
-                                  </div>
-                                ))
-                              }}
-                              itemContent={(index, product) => (
-                                <ProductCard key={product.id} product={product} onSelect={setSelectedProduct} />
-                              )}
-                            />
-                          ) : (
-                            <div className="py-40 text-center bg-gray-50 rounded-[4rem] border-4 border-dashed border-gray-100">
-                              <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl"><Search className="w-10 h-10 text-gray-200" /></div>
-                              <h3 className="text-3xl font-black italic uppercase tracking-tighter mb-4">{t({ en: 'Nothing Found', ar: 'لم يتم العثور على شيء' })}</h3>
-                              <button onClick={() => { 
-                                setSelectedCategoryId(''); 
-                                setSelectedBrand(''); 
-                                setSelectedTagId(''); 
-                                setSearchQuery(''); 
-                                setPriceRange(0, 10000);
-                              }} className="px-10 py-5 bg-black text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl hover:scale-105 transition-all">{t({ en: 'Reset Search', ar: 'إعادة تعيين البحث' })}</button>
-                            </div>
-                          )}
-                        </div>
+                        <ExploreProducts 
+                          useUrlParams={true} 
+                          showFilters={true} 
+                          enableSearch={true} 
+                          enableSort={true}
+                          onSelectProduct={setSelectedProduct}
+                        />
                       </div>
-                    </motion.div>
                   } />
 
                   <Route path="/cart" element={<CartPage onCheckout={() => navigate('/checkout')} />} />
