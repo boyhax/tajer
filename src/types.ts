@@ -204,6 +204,10 @@ export interface AppSettings {
     online: { enabled: boolean; preTransaction: boolean };
     cod: { enabled: boolean; preTransaction: boolean };
   };
+  whatsappOrders?: {
+    enabled: boolean;
+    phoneNumber: string; // The admin's WhatsApp number to redirect to
+  };
   restrictDeliveryToRegions: boolean;
   supportedAddressModes: ('normal' | 'map')[];
   appName?: LocalizedString;

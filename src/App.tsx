@@ -40,6 +40,7 @@ import {
   User as UserIcon, 
   Plus, 
   Trash2, 
+  MessageCircle,
   ChevronRight, 
   Package, 
   CreditCard, 
@@ -2498,6 +2499,31 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
         }
       });
       const orderRef = await addDoc(collection(db, 'orders'), orderData);
+
+      if (appSettings.whatsappOrders?.enabled) {
+        if (!appSettings.whatsappOrders.phoneNumber) {
+          setCheckoutError(t({ en: 'WhatsApp number is not configured by admin.', ar: 'رقم واتساب غير مهيأ من قبل الإدارة.' }));
+          setLoading(false);
+          return;
+        }
+        const orderIdPart = orderRef.id.slice(-6).toUpperCase();
+        let waText = `*New Order #${orderIdPart}*\n\n`;
+        waText += `*Customer:* ${user.displayName || 'Guest'}\n`;
+        waText += `*Address:* ${address}\n\n`;
+        waText += `*Items:*\n`;
+        cart.forEach(item => {
+          waText += `- ${item.quantity}x ${t(item.locals.name)} (${item.price} ${t(appSettings.currency?.symbol || config.currency.symbol)})\n`;
+        });
+        waText += `\n*Total:* ${total.toFixed(2)} ${t(appSettings.currency?.symbol || config.currency.symbol)}\n`;
+        
+        const waLink = `https://wa.me/${appSettings.whatsappOrders.phoneNumber.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waText)}`;
+        window.open(waLink, '_blank');
+        
+        clearCart();
+        onComplete(orderRef.id);
+        setLoading(false);
+        return;
+      }
       
       if (!isPreTransaction) {
         clearCart();
@@ -2642,35 +2668,37 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
           />
         </div>
 
-        {/* Payment & Summary omitted for brevity or I should keep them? I should keep them. */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-            <h3 className="font-bold text-base mb-4">{t({ en: 'Payment Method', ar: 'طريقة الدفع' })}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {appSettings.paymentMethods.online && (
-                <button 
-                  onClick={() => setPaymentMethod('online')}
-                  className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                    paymentMethod === 'online' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
-                  }`}
-                >
-                  <CreditCard className="w-6 h-6" />
-                  <span className="text-[10px] font-bold">{t({ en: 'Online', ar: 'إلكتروني' })}</span>
-                </button>
-              )}
-              {appSettings.paymentMethods.cod && (
-                <button 
-                  onClick={() => setPaymentMethod('cod')}
-                  className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                    paymentMethod === 'cod' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
-                  }`}
-                >
-                  <Banknote className="w-6 h-6" />
-                  <span className="text-[10px] font-bold">{t({ en: 'COD', ar: 'عند الاستلام' })}</span>
-                </button>
-              )}
+        {/* Payment & Summary */}
+        <div className={`grid grid-cols-1 ${!appSettings.whatsappOrders?.enabled ? 'md:grid-cols-2' : ''} gap-6`}>
+          {!appSettings.whatsappOrders?.enabled && (
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-bold text-base mb-4">{t({ en: 'Payment Method', ar: 'طريقة الدفع' })}</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {appSettings.paymentMethods.online && (
+                  <button 
+                    onClick={() => setPaymentMethod('online')}
+                    className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                      paymentMethod === 'online' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                  >
+                    <CreditCard className="w-6 h-6" />
+                    <span className="text-[10px] font-bold">{t({ en: 'Online', ar: 'إلكتروني' })}</span>
+                  </button>
+                )}
+                {appSettings.paymentMethods.cod && (
+                  <button 
+                    onClick={() => setPaymentMethod('cod')}
+                    className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+                      paymentMethod === 'cod' ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                  >
+                    <Banknote className="w-6 h-6" />
+                    <span className="text-[10px] font-bold">{t({ en: 'COD', ar: 'عند الاستلام' })}</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
             <h3 className="font-bold text-base mb-4">{t({ en: 'Order Summary', ar: 'ملخص الطلب' })}</h3>
@@ -2695,6 +2723,12 @@ const CheckoutPage = ({ onComplete }: { onComplete: (orderId: string) => void })
           className="w-full bg-black text-white py-5 rounded-[24px] font-extrabold text-lg hover:bg-gray-800 transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-black/10 active:scale-[0.98]"
         >
           {loading ? t({ en: 'Processing...', ar: 'جاري المعالجة...' }) : 
+           appSettings.whatsappOrders?.enabled ? (
+             <>
+               <MessageCircle className="w-5 h-5" />
+               {t({ en: 'Order via WhatsApp', ar: 'الطلب عبر واتساب' })}
+             </>
+           ) :
            paymentMethod === 'online' ? t({ en: 'Pay Now', ar: 'ادفع الآن' }) :
            t({ en: 'Confirm Order', ar: 'تأكيد الطلب' })}
         </button>
@@ -6761,6 +6795,47 @@ const AdminPanel = ({
             </div>
 
             <div className="space-y-4 pt-8 border-t border-gray-100">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-emerald-500" />
+                {t({ en: 'WhatsApp Orders', ar: 'طلبات واتساب' })}
+              </h3>
+              <div className="flex flex-col gap-4 p-4 bg-gray-50 rounded-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MessageCircle className="w-5 h-5" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">{t({ en: 'Send Orders to WhatsApp', ar: 'إرسال الطلبات إلى واتساب' })}</span>
+                      <span className="text-[10px] text-gray-500">{t({ en: 'Directly send orders to an admin WhatsApp number', ar: 'إرسال الطلبات مباشرة إلى رقم واتساب المسؤول' })}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => updateAppSettings({
+                      whatsappOrders: { 
+                        phoneNumber: appSettings.whatsappOrders?.phoneNumber || '',
+                        enabled: !appSettings.whatsappOrders?.enabled 
+                      }
+                    })}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${appSettings.whatsappOrders?.enabled ? 'bg-black' : 'bg-gray-300'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${appSettings.whatsappOrders?.enabled ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+                {appSettings.whatsappOrders?.enabled && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <label className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2 block">{t({ en: 'Admin WhatsApp Number', ar: 'رقم واتساب المسؤول' })}</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 1234567890 (include country code)"
+                      value={appSettings.whatsappOrders?.phoneNumber || ''}
+                      onChange={(e) => updateAppSettings({ whatsappOrders: { enabled: true, phoneNumber: e.target.value } })}
+                      className="w-full bg-white border border-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold">{t({ en: 'Delivery Restrictions', ar: 'قيود التوصيل' })}</h3>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                 <div className="flex items-center gap-3">
@@ -7769,6 +7844,7 @@ function MainApp() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ 
     paymentMethods: { online: true, cod: true }, 
+    whatsappOrders: { enabled: false, phoneNumber: '' },
     restrictDeliveryToRegions: false,
     supportedAddressModes: ['normal', 'map'],
     appName: config.name,
