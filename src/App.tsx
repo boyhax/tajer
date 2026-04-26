@@ -4213,6 +4213,18 @@ const StoreDashboard = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <div className="mt-12 pt-12 border-t border-gray-100">
+        <OrdersList 
+          storeId={store?.id || (profile?.roles?.includes('admin') ? 'default-store' : user?.uid)}
+          title={t({ en: 'Store Orders', ar: 'طلبات المتجر' })}
+          features={{
+            canChangeStatus: true,
+            canContactCustomer: true
+          }}
+          showCustomerDetails={true}
+        />
+      </div>
     </div>
   );
 };
@@ -4307,7 +4319,6 @@ const DeliveryTracker = ({ driverId, destinationCoords }: { driverId: string, de
 const DriverDashboard = () => {
   const { user } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
-  const [orders, setOrders] = useState<Order[]>([]);
   const [isTracking, setIsTracking] = useState(false);
 
   useEffect(() => {
@@ -4315,7 +4326,6 @@ const DriverDashboard = () => {
     const q = query(collection(db, 'orders'), where('driverId', '==', user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const fetchedOrders = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      setOrders(fetchedOrders);
       
       // Auto-enable tracking if any order is picked up
       const hasActiveDelivery = fetchedOrders.some(o => o.deliveryStatus === 'picked_up');
@@ -4349,79 +4359,15 @@ const DriverDashboard = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, [user, isTracking]);
 
-  const updateStatus = async (orderId: string, status: string) => {
-    try {
-      await updateDoc(doc(db, 'orders', orderId), { deliveryStatus: status });
-      
-      // Create notification for customer
-      const orderSnap = await getDoc(doc(db, 'orders', orderId));
-      if (orderSnap.exists()) {
-        const orderData = orderSnap.data() as Order;
-        const title = status === 'picked_up' ? 
-          { en: 'Order Out for Delivery', ar: 'الطلب في الطريق إليك' } : 
-          { en: 'Order Delivered', ar: 'تم توصيل الطلب' };
-        const body = status === 'picked_up' ?
-          { en: `Your order #${orderId.slice(0, 5)} has been picked up and is on its way!`, ar: `تم استلام طلبك رقم #${orderId.slice(0, 5)} وهو في الطريق إليك!` } :
-          { en: `Your order #${orderId.slice(0, 5)} has been delivered. Enjoy!`, ar: `تم توصيل طلبك رقم #${orderId.slice(0, 5)}. استمتع به!` };
-
-        await addDoc(collection(db, 'notifications'), {
-          userId: orderData.userId,
-          title,
-          body,
-          type: 'order_update',
-          read: false,
-          createdAt: serverTimestamp(),
-          metadata: { orderId }
-        });
-      }
-    } catch (error) {
-      console.error('Error updating status:', error);
-      alert('Error updating status');
-    }
-  };
-
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold">{t({ en: 'Delivery Assignments', ar: 'مهام التوصيل' })}</h2>
-      <div className="space-y-4">
-        {orders.length === 0 && (
-          <div className="py-12 text-center bg-gray-50 rounded-3xl">
-            <Car className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-            <p className="text-gray-500">{t({ en: 'No orders assigned yet.', ar: 'لا توجد طلبات مسندة بعد.' })}</p>
-          </div>
-        )}
-        {orders.map(order => (
-          <div key={order.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Order ID', ar: 'رقم الطلب' })}</p>
-                <p className="font-mono text-sm">{order.id}</p>
-              </div>
-              <div className="px-3 py-1 bg-black text-white text-[10px] font-bold uppercase rounded-full">
-                {order.deliveryStatus || 'assigned'}
-              </div>
-            </div>
-            <div className="mb-4">
-              <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Customer Address', ar: 'عنوان العميل' })}</p>
-              <p className="text-sm">{order.customerInfo.address}</p>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => updateStatus(order.id, 'picked_up')}
-                className="flex-1 py-2 bg-gray-100 rounded-lg text-xs font-bold hover:bg-gray-200"
-              >
-                {t({ en: 'Mark Picked Up', ar: 'تم الاستلام' })}
-              </button>
-              <button 
-                onClick={() => updateStatus(order.id, 'delivered')}
-                className="flex-1 py-2 bg-black text-white rounded-lg text-xs font-bold hover:bg-gray-800"
-              >
-                {t({ en: 'Mark Delivered', ar: 'تم التوصيل' })}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <OrdersList 
+        driverId={user?.uid} 
+        emptyMessage={t({ en: 'No orders assigned yet.', ar: 'لا توجد طلبات مسندة بعد.' })}
+        features={{ canChangeDeliveryStatus: true, canContactCustomer: true }}
+        showCustomerDetails={true}
+      />
     </div>
   );
 };
@@ -7241,42 +7187,15 @@ const AdminPanel = ({
 
       {activeSubTab === 'orders' && (
         <div className="space-y-6">
-          <h2 className="text-2xl font-bold">{t({ en: 'Order Assignments', ar: 'إسناد الطلبات' })}</h2>
-          <div className="space-y-4">
-            {orders.map(order => (
-              <div key={order.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Order', ar: 'الطلب' })} #{order.id.slice(-6)}</p>
-                    <p className="font-bold text-lg">{order.totalAmount} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">{t({ en: 'Status', ar: 'الحالة' })}</p>
-                    <OrderStatusBadge status={order.status} deliveryStatus={order.deliveryStatus} t={t} />
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap gap-4 items-center pt-4 border-t border-gray-50">
-                  <p className="text-sm font-bold text-gray-500">{t({ en: 'Assign to Driver:', ar: 'إسناد لسائق:' })}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {drivers.filter(d => d.isVerified).map(driver => (
-                      <button
-                        key={driver.id}
-                        onClick={() => assignDriver(order.id, driver.userId)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                          order.driverId === driver.userId 
-                            ? 'bg-green-500 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {driver.vehicleInfo.model} - {driver.vehicleInfo.plateNumber}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <OrdersList 
+            title={t({ en: 'Order Management', ar: 'إدارة الطلبات' })}
+            features={{ 
+              canAssignDriver: true, 
+              canChangeStatus: true,
+              canContactCustomer: true 
+            }}
+            showCustomerDetails={true}
+          />
         </div>
       )}
 
@@ -7543,59 +7462,279 @@ const TrackingDrawer = ({
   );
 };
 
-const OrdersPage = () => {
+interface OrdersListFeatureOptions {
+  canAssignDriver?: boolean;
+  canChangeStatus?: boolean;
+  canChangeDeliveryStatus?: boolean;
+  canContactDriver?: boolean;
+  canContactCustomer?: boolean;
+}
+
+const OrdersList = ({
+  userId,
+  driverId,
+  storeId,
+  status,
+  features = {},
+  title,
+  emptyMessage,
+  showCustomerDetails = false
+}: {
+  userId?: string;
+  driverId?: string;
+  storeId?: string;
+  status?: string;
+  features?: OrdersListFeatureOptions;
+  title?: string;
+  emptyMessage?: string;
+  showCustomerDetails?: boolean;
+}) => {
   const { user } = useContext(AuthContext);
   const { t } = useContext(LanguageContext);
   const { appSettings } = useContext(SettingsContext);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [isTrackingOpen, setIsTrackingOpen] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'orders'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    let constraints: any[] = [orderBy('createdAt', 'desc')];
+    if (userId) constraints.push(where('userId', '==', userId));
+    if (driverId) constraints.push(where('driverId', '==', driverId));
+    if (storeId) constraints.push(where('storeId', '==', storeId));
+    if (status) constraints.push(where('status', '==', status));
+
+    const q = query(collection(db, 'orders'), ...constraints);
     const unsub = onSnapshot(q, (snap) => {
       setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
     return unsub;
-  }, [user]);
+  }, [userId, driverId, storeId, status]);
+
+  useEffect(() => {
+    if (features.canAssignDriver) {
+      const unsub = onSnapshot(collection(db, 'drivers'), (snap) => {
+        setDrivers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Driver)));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'drivers'));
+      return unsub;
+    }
+  }, [features.canAssignDriver]);
+
+  const assignDriver = async (orderId: string, dId: string) => {
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { 
+        driverId: dId, 
+        deliveryStatus: 'assigned' 
+      });
+
+      const orderSnap = await getDoc(doc(db, 'orders', orderId));
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data() as Order;
+        if (orderData.userId) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: orderData.userId,
+            title: { en: 'Driver Assigned', ar: 'تم تعيين سائق' },
+            body: { 
+              en: `A driver has been assigned to your order #${orderId.slice(0, 5)}.`, 
+              ar: `تم تعيين سائق لطلبك رقم #${orderId.slice(0, 5)}.` 
+            },
+            type: 'order_update',
+            read: false,
+            createdAt: serverTimestamp(),
+            metadata: { orderId }
+          });
+        }
+
+        const driverSnap = await getDoc(doc(db, 'drivers', dId));
+        if (driverSnap.exists()) {
+          const driverData = driverSnap.data() as Driver;
+          await addDoc(collection(db, 'notifications'), {
+            userId: driverData.userId,
+            title: { en: 'New Delivery Assigned', ar: 'تم تعيين مهمة توصيل جديدة' },
+            body: { 
+              en: `You have a new delivery assignment for order #${orderId.slice(0, 5)}.`, 
+              ar: `لديك مهمة توصيل جديدة للطلب رقم #${orderId.slice(0, 5)}.` 
+            },
+            type: 'order_update',
+            read: false,
+            createdAt: serverTimestamp(),
+            metadata: { orderId }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error assigning driver:', error);
+      alert(t({ en: 'Error assigning driver', ar: 'خطأ في تعيين سائق' }));
+    }
+  };
+
+  const updateDeliveryStatus = async (orderId: string, deliveryStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { deliveryStatus });
+      
+      const orderSnap = await getDoc(doc(db, 'orders', orderId));
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data() as Order;
+        if (orderData.userId) {
+          const msgTitle = deliveryStatus === 'picked_up' ? 
+            { en: 'Order Out for Delivery', ar: 'الطلب في الطريق إليك' } : 
+            { en: 'Order Delivered', ar: 'تم توصيل الطلب' };
+          const msgBody = deliveryStatus === 'picked_up' ?
+            { en: `Your order #${orderId.slice(0, 5)} has been picked up and is on its way!`, ar: `تم استلام طلبك رقم #${orderId.slice(0, 5)} وهو في الطريق إليك!` } :
+            { en: `Your order #${orderId.slice(0, 5)} has been delivered. Enjoy!`, ar: `تم توصيل طلبك رقم #${orderId.slice(0, 5)}. استمتع به!` };
+
+          await addDoc(collection(db, 'notifications'), {
+            userId: orderData.userId,
+            title: msgTitle,
+            body: msgBody,
+            type: 'order_update',
+            read: false,
+            createdAt: serverTimestamp(),
+            metadata: { orderId }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert(t({ en: 'Error updating status', ar: 'خطأ في تحديث الحالة' }));
+    }
+  };
+
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+    } catch (error) {
+      console.error('Error changing order status:', error);
+      alert(t({ en: 'Error changing order status', ar: 'خطأ في تغيير حالة الطلب' }));
+    }
+  };
 
   return (
-    <div className="max-w-4xl mx-auto p-1.5 md:p-4">
-      <h1 className="text-xl md:text-4xl font-bold mb-3 md:mb-12">{t({ en: 'My Orders', ar: 'طلباتي' })}</h1>
-      <div className="space-y-2 md:space-y-6">
+    <div className="space-y-6">
+      {title && <h2 className="text-xl md:text-2xl font-bold">{title}</h2>}
+      
+      {orders.length === 0 && (
+        <div className="py-12 md:py-24 text-center bg-gray-50 rounded-2xl md:rounded-3xl border border-gray-100 flex flex-col items-center justify-center">
+          <ShoppingBag className="w-12 h-12 md:w-16 md:h-16 text-gray-200 mb-4 md:mb-6" />
+          <h2 className="text-xl md:text-2xl font-bold mb-2 text-gray-800">{emptyMessage || t({ en: 'No orders found', ar: 'لا توجد طلبات' })}</h2>
+          <p className="text-gray-500 text-sm">{t({ en: 'Orders matching your criteria will appear here.', ar: 'الطلبات المطابقة للمعايير ستظهر هنا.' })}</p>
+        </div>
+      )}
+
+      <div className="space-y-4">
         {orders.map(order => (
-          <div key={order.id} className="bg-white border border-gray-100 rounded-lg md:rounded-2xl p-2.5 md:p-6 shadow-sm">
-            <div className="flex justify-between items-start mb-1.5 md:mb-4">
+          <div key={order.id} className="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
               <div>
-                <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 md:mb-1">{t({ en: 'Order ID', ar: 'رقم الطلب' })}</div>
-                <div className="font-mono text-[8px] md:text-sm">{order.id}</div>
+                <p className="text-xs font-bold text-gray-400 uppercase">{t({ en: 'Order', ar: 'الطلب' })} #{order.id.slice(-6)}</p>
+                <p className="font-bold text-lg">{order.totalAmount.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</p>
+                <p className="text-xs text-gray-500 mt-1">{new Date(order.createdAt?.seconds * 1000).toLocaleString()}</p>
               </div>
-              <OrderStatusBadge status={order.status} deliveryStatus={order.deliveryStatus} t={t} />
+              <div className="text-right flex flex-col sm:items-end gap-2 w-full sm:w-auto">
+                <p className="text-xs font-bold text-gray-400 uppercase hidden sm:block">{t({ en: 'Status', ar: 'الحالة' })}</p>
+                
+                {features.canChangeStatus ? (
+                  <select 
+                    value={order.status}
+                    onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                    className="w-full sm:w-auto bg-gray-50 border-none text-xs rounded-xl py-2 px-3 focus:ring-2 focus:ring-black outline-none font-bold"
+                  >
+                    <option value="pending">{t({ en: 'Pending', ar: 'معلق' })}</option>
+                    <option value="processing">{t({ en: 'Processing', ar: 'قيد التنفيذ' })}</option>
+                    <option value="shipped">{t({ en: 'Shipped', ar: 'تم الشحن' })}</option>
+                    <option value="delivered">{t({ en: 'Delivered', ar: 'تم التوصيل' })}</option>
+                    <option value="cancelled">{t({ en: 'Cancelled', ar: 'ملغي' })}</option>
+                  </select>
+                ) : (
+                  <OrderStatusBadge status={order.status} deliveryStatus={order.deliveryStatus} t={t} />
+                )}
+              </div>
             </div>
-            <div className="space-y-0.5 md:space-y-2">
+
+            {/* Items display */}
+            <div className="space-y-2 py-4 border-t border-gray-50">
               {order.items.map((item, idx) => (
-                <div key={idx} className="flex justify-between text-[9px] md:text-sm text-gray-600">
-                  <span>{item.name} × {item.quantity}</span>
+                <div key={idx} className="flex justify-between text-xs md:text-sm text-gray-600">
+                  <span className="font-medium">{item.name} × {item.quantity}</span>
                   <span>{(item.price * item.quantity).toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
                 </div>
               ))}
             </div>
-            <div className="mt-1.5 md:mt-4 pt-1.5 md:pt-4 border-t flex justify-between items-center">
-              <span className="text-gray-400 text-[8px] md:text-xs">{new Date(order.createdAt?.seconds * 1000).toLocaleDateString()}</span>
-              <span className="font-bold text-xs md:text-lg">{order.totalAmount.toFixed(2)} {t(appSettings.currency?.symbol || config.currency.symbol)}</span>
-            </div>
             
-            {order.deliveryStatus === 'picked_up' && order.driverId && (
-              <div className="mt-2 md:mt-6">
+            {showCustomerDetails && (
+              <div className="mt-4 pt-4 border-t border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-1">{t({ en: 'Customer Details', ar: 'بيانات العميل' })}</p>
+                  <p className="text-sm font-medium">{order.customerInfo.name}</p>
+                  <p className="text-sm text-gray-500">{order.customerInfo.email}</p>
+                  <p className="text-sm text-gray-500 mt-1">{order.customerInfo.address}</p>
+                </div>
+                {(features.canContactCustomer) && order.customerInfo.addressDetails?.customerPhone && (
+                  <div className="flex items-center justify-start md:justify-end">
+                    <a 
+                      href={`https://wa.me/${order.customerInfo.addressDetails.customerPhone.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-green-50 text-green-600 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors"
+                    >
+                      {t({ en: 'Contact via WhatsApp', ar: 'مراسلة عبر واتساب' })}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {features.canAssignDriver && (
+              <div className="flex flex-wrap gap-4 items-center pt-4 mt-4 border-t border-gray-50">
+                <p className="text-sm font-bold text-gray-500">{t({ en: 'Assign to Driver:', ar: 'إسناد لسائق:' })}</p>
+                <div className="flex flex-wrap gap-2">
+                  {drivers.filter(d => d.isVerified).map(driver => (
+                    <button
+                      key={driver.id}
+                      onClick={() => assignDriver(order.id, driver.userId)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        order.driverId === driver.userId 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {driver.vehicleInfo.model} - {driver.vehicleInfo.plateNumber}
+                    </button>
+                  ))}
+                  {drivers.filter(d => d.isVerified).length === 0 && (
+                    <span className="text-xs text-gray-400">{t({ en: 'No verified drivers available', ar: 'لا يوجد سائقين موثقين متاحين' })}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {features.canChangeDeliveryStatus && (
+              <div className="flex gap-2 pt-4 mt-4 border-t border-gray-50">
+                <button 
+                  onClick={() => updateDeliveryStatus(order.id, 'picked_up')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-colors ${order.deliveryStatus === 'picked_up' ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 hover:bg-gray-200'}`}
+                >
+                  {t({ en: 'Mark Picked Up', ar: 'تم الاستلام' })}
+                </button>
+                <button 
+                  onClick={() => updateDeliveryStatus(order.id, 'delivered')}
+                  className={`flex-1 py-3 rounded-xl text-xs font-bold transition-colors ${order.deliveryStatus === 'delivered' ? 'bg-green-100 text-green-700' : 'bg-black text-white hover:bg-gray-800'}`}
+                >
+                  {t({ en: 'Mark Delivered', ar: 'تم التوصيل' })}
+                </button>
+              </div>
+            )}
+
+            {!features.canChangeDeliveryStatus && order.deliveryStatus === 'picked_up' && order.driverId && (
+              <div className="mt-4 pt-4 border-t border-gray-50">
                 <button 
                   onClick={() => {
                     setTrackingOrder(order);
                     setIsTrackingOpen(true);
                   }}
-                  className="w-full py-2 md:py-4 bg-emerald-50 text-emerald-600 rounded-lg md:rounded-2xl font-bold text-[9px] md:text-sm hover:bg-emerald-100 transition-all flex items-center justify-center gap-1 md:gap-2 border border-emerald-100"
+                  className="w-full py-3 md:py-4 bg-emerald-50 text-emerald-600 rounded-xl md:rounded-2xl font-bold text-[10px] md:text-sm hover:bg-emerald-100 transition-all flex items-center justify-center gap-2 border border-emerald-100"
                 >
-                  <Navigation className="w-3 h-3 md:w-4 md:h-4 animate-pulse" />
+                  <Navigation className="w-4 h-4 animate-pulse" />
                   {t({ en: 'Track Real-time Delivery', ar: 'تتبع التوصيل المباشر' })}
                 </button>
               </div>
@@ -7604,11 +7743,71 @@ const OrdersPage = () => {
         ))}
       </div>
 
-      <TrackingDrawer 
-        isOpen={isTrackingOpen}
-        onClose={() => setIsTrackingOpen(false)}
-        order={trackingOrder}
-        t={t}
+      <AnimatePresence>
+        {isTrackingOpen && trackingOrder && trackingOrder.driverId && trackingOrder.customerInfo.destinationCoords && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsTrackingOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="relative bg-white w-full max-w-xl rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center text-white">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">{t({ en: 'Track Your Order', ar: 'تتبع طلبك' })}</h2>
+                    <p className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">#{trackingOrder.id.slice(0, 8)}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsTrackingOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto">
+                <DeliveryTracker 
+                  driverId={trackingOrder.driverId} 
+                  destinationCoords={trackingOrder.customerInfo.destinationCoords} 
+                />
+              </div>
+
+              <div className="p-6 border-t border-gray-100 shrink-0">
+                <button 
+                  onClick={() => setIsTrackingOpen(false)}
+                  className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-gray-900 transition-all shadow-lg shadow-black/10"
+                >
+                  {t({ en: 'Close Tracking', ar: 'إغلاق التتبع' })}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const OrdersPage = () => {
+  const { user } = useContext(AuthContext);
+  const { t } = useContext(LanguageContext);
+
+  if (!user) return null;
+
+  return (
+    <div className="max-w-4xl mx-auto p-1.5 md:p-4 pb-24">
+      <OrdersList 
+        userId={user.uid} 
+        title={t({ en: 'My Orders', ar: 'طلباتي' })}
       />
     </div>
   );
@@ -8063,6 +8262,7 @@ function MainApp() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
 
   // Use URL for state
@@ -8363,7 +8563,11 @@ function MainApp() {
           appDescription: data.appDescription || config.description
         });
       }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/app'));
+      setSettingsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/app');
+      setSettingsLoading(false);
+    });
     return unsub;
   }, []);
 
@@ -8527,7 +8731,7 @@ function MainApp() {
     user, profile, loading, signIn, signInWithPhone, verifyCode, logout 
   }), [user, profile, loading]);
 
-  if (loading) {
+  if (loading || settingsLoading) {
     let animationProps: any = { animate: { opacity: [0.5, 1, 0.5] }, transition: { repeat: Infinity, duration: 2 } };
     
     if (appSettings.splashScreen?.animation === 'scale') {

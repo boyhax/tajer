@@ -4,16 +4,5 @@ export default [
   {
     ignores: ['dist/**/*']
   },
-  {
-    files: ['*.rules'],
-    plugins: {
-      'firebase-rules': firebaseRulesPlugin
-    },
-    languageOptions: {
-      parser: firebaseRulesPlugin.parsers.firestore
-    },
-    rules: {
-      ...firebaseRulesPlugin.configs['flat/recommended'].rules
-    }
-  }
+  firebaseRulesPlugin.configs['flat/recommended']
 ];
