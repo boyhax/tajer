@@ -61,6 +61,12 @@ export type PuckConfig = {
     buttonText: string;
     imageUrl: string;
     variant: "centered" | "split";
+    actions?: {
+      label: string;
+      path: string;
+      icon?: string;
+      variant?: "primary" | "secondary" | "outline" | "ghost";
+    }[];
   };
   SearchSection: {
     showSearchBar: boolean;
@@ -169,17 +175,72 @@ export const config: Config<PuckConfig> = {
             { label: "Split", value: "split" },
           ],
         },
+        actions: {
+          type: "array",
+          getItemSummary: (item) => item.label || 'Action',
+          arrayFields: {
+            label: { type: "text" },
+            path: { type: "text" },
+            icon: { type: "text" },
+            variant: {
+              type: "select",
+              options: [
+                { label: "Primary", value: "primary" },
+                { label: "Secondary", value: "secondary" },
+                { label: "Outline", value: "outline" },
+                { label: "Ghost", value: "ghost" },
+              ]
+            }
+          }
+        }
       },
-      render: ({ title, description, buttonText, imageUrl, variant }) => {
+      render: ({ title, description, buttonText, imageUrl, variant, actions }) => {
+        const navigate = useNavigate();
+
+        const renderActions = () => {
+          if (actions && actions.length > 0) {
+            return (
+              <div className={`flex flex-wrap gap-4 items-center ${variant === "centered" ? "justify-center" : ""}`}>
+                {actions.map((action, i) => {
+                  let btnClass = "px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-2xl flex items-center justify-center gap-2 ";
+                  
+                  if (action.variant === 'secondary') {
+                     btnClass += variant === 'centered' ? "bg-white/20 hover:bg-white/30 text-white backdrop-blur-md" : "bg-gray-100 hover:bg-gray-200 text-black";
+                  } else if (action.variant === 'outline') {
+                     btnClass += variant === 'centered' ? "border-2 border-white text-white hover:bg-white hover:text-black" : "border-2 border-black text-black hover:bg-black hover:text-white";
+                  } else if (action.variant === 'ghost') {
+                     btnClass += variant === 'centered' ? "text-white hover:bg-white/10" : "text-black hover:bg-gray-50 shadow-none";
+                  } else {
+                     btnClass += variant === 'centered' ? "bg-white text-black" : "bg-black text-white";
+                  }
+
+                  return (
+                    <button key={i} onClick={() => action.path && navigate(action.path)} className={btnClass}>
+                      {action.icon && <Icon icon={action.icon} className="w-5 h-5" />}
+                      {action.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          }
+          if (buttonText) {
+             return (
+               <button className={`px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl ${variant === 'centered' ? 'bg-white text-black' : 'bg-black text-white'}`}>
+                 {buttonText}
+               </button>
+             );
+          }
+          return null;
+        };
+
         if (variant === "split") {
           return (
             <section className="flex flex-col md:flex-row items-center gap-8 md:gap-16 py-12 md:py-20">
               <div className="flex-1 space-y-6">
                 <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter leading-none italic uppercase">{title}</h1>
                 <p className="text-xl text-gray-500 font-medium">{description}</p>
-                <button className="px-10 py-5 bg-black text-white rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-2xl">
-                  {buttonText}
-                </button>
+                {renderActions()}
               </div>
               <div className="flex-1 w-full h-[400px] md:h-[600px] rounded-[48px] overflow-hidden shadow-2xl">
                 <img 
@@ -204,9 +265,7 @@ export const config: Config<PuckConfig> = {
             <div className="relative z-10 text-center px-6 max-w-4xl">
               <h1 className="text-5xl md:text-8xl font-black mb-6 tracking-tighter leading-none italic uppercase">{title}</h1>
               <p className="text-xl md:text-2xl text-white/90 mb-12 font-medium max-w-2xl mx-auto">{description}</p>
-              <button className="px-12 py-6 bg-white text-black rounded-full font-black text-sm uppercase tracking-widest hover:scale-110 transition-all shadow-xl">
-                {buttonText}
-              </button>
+              {renderActions()}
             </div>
           </section>
         );
@@ -480,15 +539,15 @@ export const config: Config<PuckConfig> = {
         return (
           <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
              {(title || description || seeMoreLabel) && (
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
-                  {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
-                  {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+              <div className="flex flex-row flex-wrap items-center justify-between gap-4 md:gap-6 w-full">
+                <div className="flex-1">
+                  {title && <h2 className="text-2xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                  {description && <p className="text-gray-400 font-bold mt-1 md:mt-2 uppercase tracking-[0.2em] text-[8px] md:text-xs max-w-2xl">{t(description)}</p>}
                 </div>
                 {seeMoreLabel && (
                   <button 
                     onClick={() => seeMorePath && navigate(seeMorePath)}
-                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+                    className="shrink-0 flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors rtl:mr-auto ltr:ml-auto"
                   >
                     {t(seeMoreLabel)}
                     <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
@@ -676,15 +735,15 @@ export const config: Config<PuckConfig> = {
         return (
           <div className="py-12 space-y-8" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
              {(title || description || seeMoreLabel) && (
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
-                  {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
-                  {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+              <div className="flex flex-row flex-wrap items-center justify-between gap-4 md:gap-6 w-full">
+                <div className="flex-1">
+                  {title && <h2 className="text-2xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                  {description && <p className="text-gray-400 font-bold mt-1 md:mt-2 uppercase tracking-[0.2em] text-[8px] md:text-xs max-w-2xl">{t(description)}</p>}
                 </div>
                 {seeMoreLabel && (
                   <button 
                     onClick={() => seeMorePath && navigate(seeMorePath)}
-                    className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+                    className="shrink-0 flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors rtl:mr-auto ltr:ml-auto"
                   >
                     {t(seeMoreLabel)}
                     <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">

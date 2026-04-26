@@ -6,6 +6,13 @@ export interface TypedEnv {
   VITE_APP_URL: string;
   APP_URL: string;
   MYFATOORAH_API_KEY: string;
+  VITE_SPLASH_TITLE_EN: string;
+  VITE_SPLASH_TITLE_AR: string;
+  VITE_SPLASH_BG_COLOR: string;
+  VITE_SPLASH_TEXT_COLOR: string;
+  VITE_SPLASH_ANIMATION: string;
+  VITE_FONT_FAMILY_SANS: string;
+  VITE_FONT_FAMILY_DISPLAY: string;
 }
 
 export const getEnv = (key: keyof TypedEnv | string): string => {

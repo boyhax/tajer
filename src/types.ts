@@ -235,13 +235,4 @@ export interface AppSettings {
     code: string; // e.g., 'AED', 'USD'
     symbol: LocalizedString; // e.g., { en: 'AED', ar: 'د.إ' }
   };
-  splashScreen?: {
-    title?: LocalizedString;
-    animation: 'fade' | 'slide-up' | 'scale' | 'bounce';
-    backgroundColor: string;
-  };
-  font?: {
-    url: string;
-    family: string;
-  };
 }

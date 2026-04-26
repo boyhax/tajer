@@ -1208,29 +1208,29 @@ export const ExploreProducts = ({
   return (
     <div className="py-12 space-y-10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
        {(title || description || image || icon || seeMoreLabel) && (
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-          <div className="flex gap-6 items-start">
+        <div className="flex flex-row flex-wrap items-center justify-between gap-4 md:gap-8 w-full">
+          <div className="flex flex-1 gap-4 md:gap-6 items-start">
             {image && (
-              <div className="w-24 h-24 md:w-32 md:h-32 rounded-[2rem] overflow-hidden shadow-2xl shrink-0">
+              <div className="w-16 h-16 md:w-32 md:h-32 rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-2xl shrink-0">
                 <img src={image} className="w-full h-full object-cover" alt="" />
               </div>
             )}
             <div>
-              <div className="flex items-center gap-4 mb-2">
+              <div className="flex items-center gap-3 md:gap-4 mb-1 md:mb-2">
                 {icon && (
-                  <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center">
-                    <Icon icon={icon} className="w-5 h-5" />
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-black text-white flex items-center justify-center shrink-0">
+                    <Icon icon={icon} className="w-4 h-4 md:w-5 md:h-5" />
                   </div>
                 )}
-                {title && <h2 className="text-3xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
+                {title && <h2 className="text-2xl md:text-5xl font-black italic tracking-tighter uppercase leading-none">{t(title)}</h2>}
               </div>
-              {description && <p className="text-gray-400 font-bold mt-2 uppercase tracking-[0.2em] text-[10px] md:text-xs max-w-2xl">{t(description)}</p>}
+              {description && <p className="text-gray-400 font-bold mt-1 md:mt-2 uppercase tracking-[0.2em] text-[8px] md:text-xs max-w-2xl">{t(description)}</p>}
             </div>
           </div>
           {seeMoreLabel && (
             <button 
               onClick={() => seeMorePath ? navigate(seeMorePath) : navigate('/shop')}
-              className="flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors"
+              className="shrink-0 flex items-center gap-2 group text-[10px] font-black uppercase tracking-widest hover:text-emerald-500 transition-colors rtl:mr-auto ltr:ml-auto"
             >
               {t(seeMoreLabel)}
               <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-all">
@@ -6685,97 +6685,6 @@ const AdminPanel = ({
               </div>
             </div>
 
-            {/* Splash Screen Settings */}
-            <div className="space-y-6 pt-8 border-t border-gray-100">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-emerald-500" />
-                {t({ en: 'Splash Screen Settings', ar: 'إعدادات شاشة البداية' })}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Splash Title (English)', ar: 'عنوان شاشة البداية (إنجليزي)' })}</label>
-                  <input
-                    type="text"
-                    value={appSettings.splashScreen?.title?.en || ''}
-                    placeholder={t({ en: 'Leave empty to use App Name', ar: 'اتركه فارغاً لاستخدام اسم التطبيق' })}
-                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', title: { ...appSettings.splashScreen?.title, en: e.target.value } } })}
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Splash Title (Arabic)', ar: 'عنوان شاشة البداية (عربي)' })}</label>
-                  <input
-                    type="text"
-                    value={appSettings.splashScreen?.title?.ar || ''}
-                    placeholder={t({ en: 'Leave empty to use App Name', ar: 'اتركه فارغاً لاستخدام اسم التطبيق' })}
-                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', title: { ...appSettings.splashScreen?.title, ar: e.target.value } } })}
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Animation Style', ar: 'نمط الحركة' })}</label>
-                  <select
-                    value={appSettings.splashScreen?.animation || 'fade'}
-                    onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, backgroundColor: appSettings.splashScreen?.backgroundColor || '#ffffff', animation: e.target.value as any } })}
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
-                  >
-                    <option value="fade">Fade</option>
-                    <option value="slide-up">Slide Up</option>
-                    <option value="scale">Scale</option>
-                    <option value="bounce">Bounce</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Background Color', ar: 'لون الخلفية' })}</label>
-                  <div className="flex gap-4 items-center">
-                    <input
-                      type="color"
-                      value={appSettings.splashScreen?.backgroundColor || '#ffffff'}
-                      onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: e.target.value } })}
-                      className="w-14 h-14 rounded-xl cursor-pointer border-none"
-                    />
-                    <input
-                      type="text"
-                      value={appSettings.splashScreen?.backgroundColor || '#ffffff'}
-                      onChange={(e) => updateAppSettings({ splashScreen: { ...appSettings.splashScreen, animation: appSettings.splashScreen?.animation || 'fade', backgroundColor: e.target.value } })}
-                      className="flex-1 px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-mono text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Font Settings */}
-            <div className="space-y-6 pt-8 border-t border-gray-100">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <Type className="w-5 h-5 text-emerald-500" />
-                {t({ en: 'Font Settings', ar: 'إعدادات الخط' })}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Font URL (@import/CSS)', ar: 'رابط الخط' })}</label>
-                  <input
-                    type="text"
-                    value={appSettings.font?.url || ''}
-                    placeholder="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap"
-                    onChange={(e) => updateAppSettings({ font: { ...appSettings.font, family: appSettings.font?.family || '', url: e.target.value } })}
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'Font Family', ar: 'اسم الخط' })}</label>
-                  <input
-                    type="text"
-                    value={appSettings.font?.family || ''}
-                    placeholder="'Tajawal', sans-serif"
-                    onChange={(e) => updateAppSettings({ font: { ...appSettings.font, url: appSettings.font?.url || '', family: e.target.value } })}
-                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-black font-medium text-right"
-                  />
-                  <p className="text-xs text-gray-500 mt-2 px-2">{t({ en: 'e.g., \'Inter\', sans-serif', ar: 'مثال: \'Tajawal\', sans-serif' })}</p>
-                </div>
-              </div>
-            </div>
-
             {/* Currency Settings */}
             <div className="space-y-6 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-bold flex items-center gap-2">
@@ -8307,7 +8216,6 @@ function MainApp() {
     paymentMethods: { online: true, cod: true }, 
     whatsappOrders: { enabled: false, phoneNumber: '' },
     features: { marketplace: false, drivers: false },
-    splashScreen: { animation: 'pulse' as any, backgroundColor: '#ffffff' },
     restrictDeliveryToRegions: false,
     supportedAddressModes: ['normal', 'map'],
     appName: config.name,
@@ -8319,36 +8227,12 @@ function MainApp() {
   });
 
   useEffect(() => {
-    const fontUrl = appSettings?.font?.url;
-    const fontFamily = appSettings?.font?.family;
+    const sans = getEnv('VITE_FONT_FAMILY_SANS');
+    const display = getEnv('VITE_FONT_FAMILY_DISPLAY');
 
-    if (fontUrl) {
-      let link = document.getElementById('custom-font-link') as HTMLLinkElement;
-      if (!link) {
-        link = document.createElement('link');
-        link.id = 'custom-font-link';
-        link.rel = 'stylesheet';
-        document.head.appendChild(link);
-      }
-      if (link.href !== fontUrl) {
-        link.href = fontUrl;
-      }
-    } else {
-      const link = document.getElementById('custom-font-link');
-      if (link) link.remove();
-    }
-
-    if (fontFamily) {
-      document.documentElement.style.setProperty('--font-sans', fontFamily);
-      document.documentElement.style.setProperty('--font-display', fontFamily);
-      // Fallback for Tailwind v4 or explicit override
-      document.body.style.fontFamily = fontFamily;
-    } else {
-      document.documentElement.style.removeProperty('--font-sans');
-      document.documentElement.style.removeProperty('--font-display');
-      document.body.style.fontFamily = '';
-    }
-  }, [appSettings?.font?.url, appSettings?.font?.family]);
+    if (sans) document.documentElement.style.setProperty('--font-sans', sans);
+    if (display) document.documentElement.style.setProperty('--font-display', display);
+  }, []);
 
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -8732,24 +8616,32 @@ function MainApp() {
   }), [user, profile, loading]);
 
   if (loading || settingsLoading) {
+    const splashAnim = getEnv('VITE_SPLASH_ANIMATION') || 'pulse';
+    const splashBg = getEnv('VITE_SPLASH_BG_COLOR') || config.theme.background;
+    const splashText = getEnv('VITE_SPLASH_TEXT_COLOR') || config.theme.primary;
+    const splashTitle = {
+      en: getEnv('VITE_SPLASH_TITLE_EN') || config.name.en,
+      ar: getEnv('VITE_SPLASH_TITLE_AR') || config.name.ar
+    };
+
     let animationProps: any = { animate: { opacity: [0.5, 1, 0.5] }, transition: { repeat: Infinity, duration: 2 } };
     
-    if (appSettings.splashScreen?.animation === 'scale') {
+    if (splashAnim === 'scale') {
       animationProps = { animate: { scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }, transition: { repeat: Infinity, duration: 2 } };
-    } else if (appSettings.splashScreen?.animation === 'bounce') {
+    } else if (splashAnim === 'bounce') {
       animationProps = { animate: { y: [0, -20, 0] }, transition: { repeat: Infinity, duration: 1, ease: 'easeInOut' } };
-    } else if (appSettings.splashScreen?.animation === 'slide-up') {
+    } else if (splashAnim === 'slide-up') {
       animationProps = { animate: { y: [20, 0, 20], opacity: [0, 1, 0] }, transition: { repeat: Infinity, duration: 2 } };
     }
 
     return (
-      <div className="h-screen flex items-center justify-center bg-white" style={{ backgroundColor: appSettings.splashScreen?.backgroundColor || config.theme.background }}>
+      <div className="h-screen flex items-center justify-center bg-white" style={{ backgroundColor: splashBg }}>
         <motion.div 
           {...animationProps}
           className="text-4xl font-black italic tracking-tighter"
-          style={{ color: config.theme.primary }}
+          style={{ color: splashText }}
         >
-          {appSettings.splashScreen?.title?.en ? t(appSettings.splashScreen.title) : t(appSettings.appName)}
+          {t(splashTitle)}
         </motion.div>
       </div>
     );
