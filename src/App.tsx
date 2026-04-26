@@ -2575,7 +2575,7 @@ const ProfilePage = ({
             <p className="text-sm md:text-base text-gray-500">{user.email}</p>
             <div className="flex gap-2 mt-2 justify-center md:justify-start">
               <span className="px-2 py-0.5 md:px-3 md:py-1 bg-black text-white text-[8px] md:text-[10px] font-bold uppercase rounded-full">
-                {profile.role}
+                {profile.roles?.includes('admin') ? 'Admin' : profile.role}
               </span>
               {profile.isVerified && (
                 <span className="px-2 py-0.5 md:px-3 md:py-1 bg-green-500 text-white text-[8px] md:text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
@@ -4389,11 +4389,11 @@ const AdminPanel = ({
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeSubTab = (searchParams.get('tab') as any) || 'products';
+  const activeSubTab = (searchParams.get('subtab') as any) || 'products';
   const setActiveSubTab = (tab: string) => {
     const newParams = new URLSearchParams(searchParams);
-    newParams.set('tab', tab);
-    setSearchParams(newParams);
+    newParams.set('subtab', tab);
+    setSearchParams(newParams, { replace: true });
   };
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);

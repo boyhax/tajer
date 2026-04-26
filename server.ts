@@ -5,7 +5,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
 import fs from "fs";
-import { getEnv } from "./src/lib/env";
+import { getEnv } from "./src/lib/env.ts";
 
 dotenv.config();
 
@@ -14,24 +14,34 @@ let adminApp: any = null;
 const getOrderDb = () => {
   if (!adminApp) {
     try {
-      const saPath = path.join(process.cwd(), "firebase-service-account.json");
-      if (fs.existsSync(saPath)) {
-        const serviceAccount = JSON.parse(fs.readFileSync(saPath, "utf8"));
+      const saEnv = getEnv("FIREBASE_SERVICE_ACCOUNT");
+      if (saEnv) {
+        const serviceAccount = JSON.parse(saEnv);
         adminApp = admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
         }, 'server-admin');
-        console.log("Firebase Admin initialized with service account.");
+        console.log("Firebase Admin initialized with service account from env.");
       } else {
-        const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-        if (fs.existsSync(configPath)) {
-          const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const saPath = path.join(process.cwd(), "firebase-service-account.json");
+        if (fs.existsSync(saPath)) {
+          const serviceAccount = JSON.parse(fs.readFileSync(saPath, "utf8"));
           adminApp = admin.initializeApp({
-            projectId: firebaseConfig.projectId,
+            credential: admin.credential.cert(serviceAccount)
           }, 'server-admin');
-          console.warn("Service account not found, initialized with projectId only.");
+          console.log("Firebase Admin initialized with service account file.");
         } else {
-          console.error("No firebase config found.");
-          return null;
+          // Fallback to default credentials or projectId
+          const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+          if (fs.existsSync(configPath)) {
+            const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+            adminApp = admin.initializeApp({
+              projectId: firebaseConfig.projectId,
+            }, 'server-admin');
+            console.warn("Service account not found, initialized with projectId only.");
+          } else {
+            console.error("No firebase config found.");
+            return null;
+          }
         }
       }
     } catch (error) {
