@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { 
   Globe, 
   Bell, 
@@ -14,6 +14,7 @@ import {
   useNotifications 
 } from '../../contexts';
 import { config } from '../../lib/config';
+import { SettingsContext } from '../../App';
 import { NotificationCenter } from './NotificationCenter';
 
 interface NavbarProps {
@@ -26,6 +27,7 @@ export const Navbar = ({ onNavigate, currentPage }: NavbarProps) => {
   const { cart } = useCart();
   const { lang, setLang, t } = useLanguage();
   const { unreadCount } = useNotifications();
+  const { appSettings } = useContext(SettingsContext);
   const [showNotifications, setShowNotifications] = useState(false);
 
   return (
@@ -34,13 +36,17 @@ export const Navbar = ({ onNavigate, currentPage }: NavbarProps) => {
         className="flex items-center gap-2 cursor-pointer" 
         onClick={() => onNavigate('home')}
       >
-        <div 
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xl italic"
-          style={{ backgroundColor: config.theme.primary }}
-        >
-          {t(config.name).charAt(0)}
-        </div>
-        <span className="text-xl font-bold tracking-tight">{t(config.name)}</span>
+        {appSettings.logoUrl ? (
+          <img src={appSettings.logoUrl} alt="logo" className="w-10 h-10 rounded-full object-contain" />
+        ) : (
+          <div 
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xl italic"
+            style={{ backgroundColor: config.theme.primary }}
+          >
+            {t(appSettings.appName || config.name).charAt(0)}
+          </div>
+        )}
+        <span className="text-xl font-bold tracking-tight">{t(appSettings.appName || config.name)}</span>
       </div>
 
       <div className="hidden md:flex items-center gap-6">

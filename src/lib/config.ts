@@ -28,8 +28,8 @@ export interface AppConfig {
 
 export const config: AppConfig = {
   name: {
-    en: 'Kuzama',
-    ar: 'خوزاما',
+    en: 'Tajer',
+    ar: 'تاجر',
   },
   description: {
     en: 'Local supermarket in Oman',

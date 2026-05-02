@@ -162,7 +162,7 @@ export const WelcomeModal = ({ isOpen, onClose }: WelcomeModalProps) => {
                   transition={{ delay: 0.4 }}
                   className="text-6xl font-black tracking-tighter leading-none bg-clip-text text-transparent bg-gradient-to-b from-black to-gray-600"
                 >
-                  {t({ en: 'KUZAMA', ar: 'خوزاما' })}
+                  {t({ en: 'TAJER', ar: 'تاجر' })}
                 </motion.h2>
                 
                 <motion.p 

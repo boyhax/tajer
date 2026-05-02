@@ -145,6 +145,43 @@ export type PuckConfig = {
   Space: {
     height: number;
   };
+  FeaturesSection: {
+    sectionTitle?: string;
+    sectionSubtitle?: string;
+    alignment?: "left" | "center";
+    columns?: 2 | 3 | 4;
+    layout?: "cards" | "icon-list";
+    gradientPreset?: "none" | "purple" | "blue" | "emerald" | "amber" | "rose" | "dark" | "custom";
+    gradientFrom?: string;
+    gradientTo?: string;
+    gradientDirection?: string;
+    paddingY?: "small" | "medium" | "large";
+    borderRadius?: "none" | "small" | "large" | "full";
+    items?: {
+      icon?: string;
+      iconBg?: string;
+      title: string;
+      description: string;
+    }[];
+  };
+  FeatureSteps: {
+    sectionTitle?: string;
+    sectionSubtitle?: string;
+    alignment?: "left" | "center";
+    layout?: "horizontal" | "vertical" | "cards";
+    gradientPreset?: "none" | "purple" | "blue" | "emerald" | "amber" | "rose" | "dark" | "custom";
+    gradientFrom?: string;
+    gradientTo?: string;
+    gradientDirection?: string;
+    paddingY?: "small" | "medium" | "large";
+    borderRadius?: "none" | "small" | "large" | "full";
+    items?: {
+      num?: string;
+      icon?: string;
+      title: string;
+      description: string;
+    }[];
+  };
 };
 
 const GridContainer = React.forwardRef(({ children, ...props }: any, ref: any) => (
@@ -174,65 +211,16 @@ export const config: Config<PuckConfig> = {
             { label: "Centered", value: "centered" },
             { label: "Split", value: "split" },
           ],
-        },
-        actions: {
-          type: "array",
-          getItemSummary: (item) => item.label || 'Action',
-          arrayFields: {
-            label: { type: "text" },
-            path: { type: "text" },
-            icon: { type: "text" },
-            variant: {
-              type: "select",
-              options: [
-                { label: "Primary", value: "primary" },
-                { label: "Secondary", value: "secondary" },
-                { label: "Outline", value: "outline" },
-                { label: "Ghost", value: "ghost" },
-              ]
-            }
-          }
         }
       },
-      render: ({ title, description, buttonText, imageUrl, variant, actions }) => {
-        const navigate = useNavigate();
-
-        const renderActions = () => {
-          if (actions && actions.length > 0) {
-            return (
-              <div className={`flex flex-wrap gap-4 items-center ${variant === "centered" ? "justify-center" : ""}`}>
-                {actions.map((action, i) => {
-                  let btnClass = "px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-2xl flex items-center justify-center gap-2 ";
-                  
-                  if (action.variant === 'secondary') {
-                     btnClass += variant === 'centered' ? "bg-white/20 hover:bg-white/30 text-white backdrop-blur-md" : "bg-gray-100 hover:bg-gray-200 text-black";
-                  } else if (action.variant === 'outline') {
-                     btnClass += variant === 'centered' ? "border-2 border-white text-white hover:bg-white hover:text-black" : "border-2 border-black text-black hover:bg-black hover:text-white";
-                  } else if (action.variant === 'ghost') {
-                     btnClass += variant === 'centered' ? "text-white hover:bg-white/10" : "text-black hover:bg-gray-50 shadow-none";
-                  } else {
-                     btnClass += variant === 'centered' ? "bg-white text-black" : "bg-black text-white";
-                  }
-
-                  return (
-                    <button key={i} onClick={() => action.path && navigate(action.path)} className={btnClass}>
-                      {action.icon && <Icon icon={action.icon} className="w-5 h-5" />}
-                      {action.label}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          }
-          if (buttonText) {
-             return (
-               <button className={`px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl ${variant === 'centered' ? 'bg-white text-black' : 'bg-black text-white'}`}>
-                 {buttonText}
-               </button>
-             );
-          }
-          return null;
-        };
+      defaultProps: {
+        title: 'Your Headline',
+        description: 'Your description here.',
+        buttonText: '',
+        imageUrl: '',
+        variant: 'centered',
+      },
+      render: ({ title, description, buttonText, imageUrl, variant }) => {
 
         if (variant === "split") {
           return (
@@ -240,7 +228,11 @@ export const config: Config<PuckConfig> = {
               <div className="flex-1 space-y-6">
                 <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter leading-none italic uppercase">{title}</h1>
                 <p className="text-xl text-gray-500 font-medium">{description}</p>
-                {renderActions()}
+                {buttonText && (
+                  <button className="px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl bg-black text-white">
+                    {buttonText}
+                  </button>
+                )}
               </div>
               <div className="flex-1 w-full h-[400px] md:h-[600px] rounded-[48px] overflow-hidden shadow-2xl">
                 <img 
@@ -265,7 +257,11 @@ export const config: Config<PuckConfig> = {
             <div className="relative z-10 text-center px-6 max-w-4xl">
               <h1 className="text-5xl md:text-8xl font-black mb-6 tracking-tighter leading-none italic uppercase">{title}</h1>
               <p className="text-xl md:text-2xl text-white/90 mb-12 font-medium max-w-2xl mx-auto">{description}</p>
-              {renderActions()}
+              {buttonText && (
+                <button className="px-10 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl bg-white text-black">
+                  {buttonText}
+                </button>
+              )}
             </div>
           </section>
         );
@@ -416,7 +412,7 @@ export const config: Config<PuckConfig> = {
       fields: {
         items: {
           type: "array",
-          getItemSummary: (item) => item.title,
+          getItemSummary: (item) => item?.title || 'Item',
           arrayFields: {
             title: { type: "text" },
             description: { type: "text" },
@@ -653,7 +649,7 @@ export const config: Config<PuckConfig> = {
             { label: "Local Delivery", value: "local-delivery" },
           ]
         },
-        categoryIds: { type: "array", getItemSummary: (item) => item.id, arrayFields: { id: { type: "text" } } },
+        categoryIds: { type: "array", getItemSummary: (item) => item?.id || 'Category', arrayFields: { id: { type: "text" } } },
         defaultTagId: { type: "text" },
         defaultSearch: { type: "text" },
         useUrlParams: { type: "radio", options: [{ label: "Yes", value: true }, { label: "No", value: false }] },
@@ -877,6 +873,423 @@ export const config: Config<PuckConfig> = {
         height: { type: "number" },
       },
       render: ({ height }) => <div style={{ height }} />,
-    }
+    },
+    FeaturesSection: {
+      fields: {
+        sectionTitle: { type: "text" },
+        sectionSubtitle: { type: "text" },
+        alignment: {
+          type: "select",
+          options: [
+            { label: "Left", value: "left" },
+            { label: "Center", value: "center" },
+          ],
+        },
+        columns: {
+          type: "select",
+          options: [
+            { label: "2 Columns", value: 2 },
+            { label: "3 Columns", value: 3 },
+            { label: "4 Columns", value: 4 },
+          ],
+        },
+        layout: {
+          type: "select",
+          options: [
+            { label: "Cards Grid", value: "cards" },
+            { label: "Icon List", value: "icon-list" },
+          ],
+        },
+        gradientPreset: {
+          type: "select",
+          options: [
+            { label: "None (White)", value: "none" },
+            { label: "Purple", value: "purple" },
+            { label: "Blue → Purple", value: "blue" },
+            { label: "Emerald → Sky", value: "emerald" },
+            { label: "Amber", value: "amber" },
+            { label: "Rose", value: "rose" },
+            { label: "Dark", value: "dark" },
+            { label: "Custom", value: "custom" },
+          ],
+        },
+        gradientFrom: { type: "text" },
+        gradientTo: { type: "text" },
+        gradientDirection: {
+          type: "select",
+          options: [
+            { label: "↘ Bottom Right", value: "135deg" },
+            { label: "→ Right", value: "90deg" },
+            { label: "↓ Bottom", value: "180deg" },
+            { label: "↗ Top Right", value: "45deg" },
+          ],
+        },
+        paddingY: {
+          type: "select",
+          options: [
+            { label: "Small", value: "small" },
+            { label: "Medium", value: "medium" },
+            { label: "Large", value: "large" },
+          ],
+        },
+        borderRadius: {
+          type: "select",
+          options: [
+            { label: "None", value: "none" },
+            { label: "Small", value: "small" },
+            { label: "Large", value: "large" },
+            { label: "Full", value: "full" },
+          ],
+        },
+        items: {
+          type: "array",
+          getItemSummary: (item: any) => item.title || "Feature",
+          arrayFields: {
+            icon: { type: "text" },
+            iconBg: { type: "text" },
+            title: { type: "text" },
+            description: { type: "text" },
+          },
+        },
+      },
+      defaultProps: {
+        sectionTitle: "Our Features",
+        sectionSubtitle: "Everything you need",
+        alignment: "center",
+        columns: 3,
+        layout: "cards",
+        gradientPreset: "purple",
+        gradientDirection: "135deg",
+        paddingY: "medium",
+        borderRadius: "large",
+        items: [
+          { icon: "ph:storefront-bold", iconBg: "", title: "Online Store", description: "Launch your store in minutes with full product management and beautiful storefronts." },
+          { icon: "ph:swap-bold", iconBg: "", title: "Variant Products", description: "Size, color, material — unlimited attribute combinations with per-variant pricing and stock." },
+          { icon: "ph:chat-circle-text-bold", iconBg: "", title: "Quote Products", description: "Let customers request custom prices. Perfect for wholesale and custom orders." },
+          { icon: "ph:whatsapp-logo-bold", iconBg: "", title: "WhatsApp Orders", description: "Accept orders directly via WhatsApp. No payment gateway required." },
+          { icon: "ph:truck-bold", iconBg: "", title: "Delivery Regions", description: "Define delivery zones, methods per category, and cost rules per region." },
+          { icon: "ph:chart-line-up-bold", iconBg: "", title: "Analytics", description: "Track sales, visitors, and revenue with real-time dashboards." },
+        ],
+      },
+      render: ({
+        sectionTitle,
+        sectionSubtitle,
+        alignment = "center",
+        columns = 3,
+        layout = "cards",
+        gradientPreset = "none",
+        gradientFrom,
+        gradientTo,
+        gradientDirection = "135deg",
+        paddingY = "medium",
+        borderRadius = "large",
+        items = [],
+      }) => {
+        const { lang } = useContext(LanguageContext);
+
+        const gradients: Record<string, string> = {
+          none: "transparent",
+          purple: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+          blue: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
+          emerald: "linear-gradient(135deg, #059669 0%, #0ea5e9 100%)",
+          amber: "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)",
+          rose: "linear-gradient(135deg, #e11d48 0%, #ec4899 100%)",
+          dark: "linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%)",
+          custom: `linear-gradient(${gradientDirection || "135deg"}, ${gradientFrom || "#6366f1"} 0%, ${gradientTo || "#8b5cf6"} 100%)`,
+        };
+
+        const bg = gradients[gradientPreset] || "transparent";
+        const isColored = gradientPreset !== "none";
+        const padY = ({ small: "py-8 px-6 md:px-10", medium: "py-16 px-8 md:px-14", large: "py-24 px-10 md:px-20" } as any)[paddingY] || "py-16 px-8 md:px-14";
+        const br = ({ none: "", small: "rounded-2xl", large: "rounded-[48px]", full: "rounded-[64px]" } as any)[borderRadius] || "rounded-[48px]";
+        const innerBr = ({ none: "", small: "rounded-xl", large: "rounded-[32px]", full: "rounded-[40px]" } as any)[borderRadius] || "rounded-[32px]";
+        const gridCols = ({
+          2: "grid-cols-1 md:grid-cols-2",
+          3: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+          4: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
+        } as any)[columns] || "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+
+        const textColor = isColored ? "text-white" : "text-black";
+        const subtitleColor = isColored ? "text-white/60" : "text-gray-400";
+        const cardCls = isColored
+          ? `bg-white/10 border border-white/20 hover:bg-white/20 ${innerBr} transition-all duration-300`
+          : `bg-white border border-gray-100 hover:shadow-xl hover:border-gray-200 ${innerBr} transition-all duration-300`;
+        const cardTitle = isColored ? "text-white" : "text-gray-900";
+        const cardDesc = isColored ? "text-white/70" : "text-gray-500";
+        const iconBgDefault = isColored ? "rgba(255,255,255,0.2)" : "#f3f4f6";
+        const iconColor = isColored ? "text-white" : "text-black";
+
+        return (
+          <section
+            className={`${padY} ${br} my-4`}
+            style={{ background: bg }}
+            dir={lang === "ar" ? "rtl" : "ltr"}
+          >
+            {(sectionTitle || sectionSubtitle) && (
+              <div className={`mb-12 ${alignment === "center" ? "text-center" : ""}`}>
+                {sectionTitle && (
+                  <h2 className={`text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none ${textColor}`}>
+                    {sectionTitle}
+                  </h2>
+                )}
+                {sectionSubtitle && (
+                  <p className={`mt-3 font-bold uppercase tracking-[0.3em] text-xs ${subtitleColor}`}>
+                    {sectionSubtitle}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {layout === "icon-list" ? (
+              <div className={`grid ${gridCols} gap-6`}>
+                {items.map((item, i) => (
+                  <div key={i} className="flex items-start gap-4">
+                    <div
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: item.iconBg || iconBgDefault }}
+                    >
+                      <Icon icon={item.icon || "ph:star-bold"} className={`w-6 h-6 ${iconColor}`} />
+                    </div>
+                    <div>
+                      <h4 className={`font-black text-base tracking-tight ${cardTitle}`}>{item.title}</h4>
+                      <p className={`text-sm font-medium leading-relaxed mt-1 ${cardDesc}`}>{item.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={`grid ${gridCols} gap-6`}>
+                {items.map((item, i) => (
+                  <div key={i} className={`p-8 ${cardCls}`}>
+                    <div
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6"
+                      style={{ backgroundColor: item.iconBg || iconBgDefault }}
+                    >
+                      <Icon icon={item.icon || "ph:star-bold"} className={`w-6 h-6 ${iconColor}`} />
+                    </div>
+                    <h4 className={`font-black text-lg tracking-tight mb-2 ${cardTitle}`}>{item.title}</h4>
+                    <p className={`text-sm font-medium leading-relaxed ${cardDesc}`}>{item.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      },
+    },
+    FeatureSteps: {
+      fields: {
+        sectionTitle: { type: "text" },
+        sectionSubtitle: { type: "text" },
+        alignment: {
+          type: "select",
+          options: [
+            { label: "Left", value: "left" },
+            { label: "Center", value: "center" },
+          ],
+        },
+        layout: {
+          type: "select",
+          options: [
+            { label: "Horizontal Steps", value: "horizontal" },
+            { label: "Vertical Timeline", value: "vertical" },
+            { label: "Cards Grid", value: "cards" },
+          ],
+        },
+        gradientPreset: {
+          type: "select",
+          options: [
+            { label: "None (White)", value: "none" },
+            { label: "Purple", value: "purple" },
+            { label: "Blue \u2192 Purple", value: "blue" },
+            { label: "Emerald \u2192 Sky", value: "emerald" },
+            { label: "Amber", value: "amber" },
+            { label: "Rose", value: "rose" },
+            { label: "Dark", value: "dark" },
+            { label: "Custom", value: "custom" },
+          ],
+        },
+        gradientFrom: { type: "text" },
+        gradientTo: { type: "text" },
+        gradientDirection: {
+          type: "select",
+          options: [
+            { label: "\u2198 Bottom Right", value: "135deg" },
+            { label: "\u2192 Right", value: "90deg" },
+            { label: "\u2193 Bottom", value: "180deg" },
+          ],
+        },
+        paddingY: {
+          type: "select",
+          options: [
+            { label: "Small", value: "small" },
+            { label: "Medium", value: "medium" },
+            { label: "Large", value: "large" },
+          ],
+        },
+        borderRadius: {
+          type: "select",
+          options: [
+            { label: "None", value: "none" },
+            { label: "Small", value: "small" },
+            { label: "Large", value: "large" },
+            { label: "Full", value: "full" },
+          ],
+        },
+        items: {
+          type: "array",
+          getItemSummary: (item: any) => item.title || "Step",
+          arrayFields: {
+            num: { type: "text" },
+            icon: { type: "text" },
+            title: { type: "text" },
+            description: { type: "text" },
+          },
+        },
+      },
+      defaultProps: {
+        sectionTitle: "How It Works",
+        sectionSubtitle: "Get started in minutes",
+        alignment: "center",
+        layout: "horizontal",
+        gradientPreset: "none",
+        paddingY: "large",
+        borderRadius: "none",
+        items: [
+          { num: "01", icon: "ph:storefront-bold", title: "Register Your Store", description: "Sign up and submit your store registration. Our team reviews and verifies your account quickly." },
+          { num: "02", icon: "ph:package-bold", title: "Add Your Products", description: "Upload photos, set prices, add variants and organise categories from your dashboard." },
+          { num: "03", icon: "ph:rocket-launch-bold", title: "Go Live", description: "Your products appear in the marketplace instantly. Customers can browse and order right away." },
+          { num: "04", icon: "ph:chart-line-up-bold", title: "Manage & Grow", description: "Track orders, run promotions, manage inventory and analyze performance in real time." },
+        ],
+      },
+      render: ({
+        sectionTitle,
+        sectionSubtitle,
+        alignment = "center",
+        layout = "horizontal",
+        gradientPreset = "none",
+        gradientFrom,
+        gradientTo,
+        gradientDirection = "135deg",
+        paddingY = "large",
+        borderRadius = "none",
+        items = [],
+      }) => {
+        const { lang } = useContext(LanguageContext);
+
+        const gradients: Record<string, string> = {
+          none: "transparent",
+          purple: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+          blue: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
+          emerald: "linear-gradient(135deg, #059669 0%, #0ea5e9 100%)",
+          amber: "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)",
+          rose: "linear-gradient(135deg, #e11d48 0%, #ec4899 100%)",
+          dark: "linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%)",
+          custom: `linear-gradient(${gradientDirection || "135deg"}, ${gradientFrom || "#6366f1"} 0%, ${gradientTo || "#8b5cf6"} 100%)`,
+        };
+
+        const bg = gradients[gradientPreset] || "transparent";
+        const isColored = gradientPreset !== "none";
+        const padY = ({ small: "py-8 px-6 md:px-10", medium: "py-16 px-8 md:px-14", large: "py-24 px-10 md:px-20" } as any)[paddingY] || "py-16 px-8 md:px-14";
+        const br = ({ none: "", small: "rounded-2xl", large: "rounded-[48px]", full: "rounded-[64px]" } as any)[borderRadius] || "";
+        const textColor = isColored ? "text-white" : "text-black";
+        const subtitleColor = isColored ? "text-white/60" : "text-gray-400";
+        const descColor = isColored ? "text-white/70" : "text-gray-500";
+        const numBadgeCls = isColored
+          ? "bg-white/20 border border-white/30 text-white"
+          : "bg-black text-white border border-black/10";
+        const connectorCls = isColored ? "border-white/20" : "border-gray-100";
+        const cardCls = isColored
+          ? "bg-white/10 border border-white/20 hover:bg-white/15 transition-all duration-300"
+          : "bg-white border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300";
+
+        const StepBadge = ({ step }: { step: typeof items[0] }) => (
+          <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center shrink-0 ${numBadgeCls}`}>
+            {step.icon
+              ? <Icon icon={step.icon} className="w-7 h-7" />
+              : <span className="font-black text-lg leading-none">{step.num}</span>
+            }
+          </div>
+        );
+
+        return (
+          <section
+            className={`${padY} ${br} my-4`}
+            style={{ background: bg }}
+            dir={lang === "ar" ? "rtl" : "ltr"}
+          >
+            {(sectionTitle || sectionSubtitle) && (
+              <div className={`mb-16 ${alignment === "center" ? "text-center" : ""}`}>
+                {sectionTitle && (
+                  <h2 className={`text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none ${textColor}`}>
+                    {sectionTitle}
+                  </h2>
+                )}
+                {sectionSubtitle && (
+                  <p className={`mt-3 font-bold uppercase tracking-[0.3em] text-xs ${subtitleColor}`}>
+                    {sectionSubtitle}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {layout === "horizontal" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 relative">
+                {items.map((step, i) => (
+                  <div key={i} className="relative flex flex-col items-center text-center">
+                    {i < items.length - 1 && (
+                      <div className={`hidden lg:block absolute top-8 ${lang === 'ar' ? 'left-0 right-[calc(50%+2.5rem)]' : 'left-[calc(50%+2.5rem)] right-0'} border-t-2 border-dashed ${connectorCls}`} />
+                    )}
+                    <StepBadge step={step} />
+                    {step.num && step.icon && (
+                      <span className={`text-[10px] font-black uppercase tracking-widest mt-3 mb-1 ${subtitleColor}`}>{step.num}</span>
+                    )}
+                    <h4 className={`font-black text-lg tracking-tight mt-3 mb-2 ${textColor}`}>{step.title}</h4>
+                    <p className={`text-sm font-medium leading-relaxed ${descColor}`}>{step.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {layout === "vertical" && (
+              <div className="space-y-10 max-w-2xl mx-auto">
+                {items.map((step, i) => (
+                  <div key={i} className="flex gap-8 items-start">
+                    <div className="relative flex flex-col items-center">
+                      <StepBadge step={step} />
+                      {i < items.length - 1 && (
+                        <div className={`w-px flex-1 min-h-[3rem] border-l-2 border-dashed mt-3 ${connectorCls}`} />
+                      )}
+                    </div>
+                    <div className="pt-3">
+                      {step.num && step.icon && (
+                        <span className={`text-[10px] font-black uppercase tracking-widest mb-1 block ${subtitleColor}`}>{step.num}</span>
+                      )}
+                      <h4 className={`font-black text-xl tracking-tight mb-2 ${textColor}`}>{step.title}</h4>
+                      <p className={`text-sm font-medium leading-relaxed ${descColor}`}>{step.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {layout === "cards" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {items.map((step, i) => (
+                  <div key={i} className={`p-8 rounded-[32px] ${cardCls}`}>
+                    <StepBadge step={step} />
+                    {step.num && step.icon && (
+                      <span className={`text-[10px] font-black uppercase tracking-widest mt-4 mb-1 block ${subtitleColor}`}>{step.num}</span>
+                    )}
+                    <h4 className={`font-black text-lg tracking-tight mt-4 mb-2 ${textColor}`}>{step.title}</h4>
+                    <p className={`text-sm font-medium leading-relaxed ${descColor}`}>{step.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      },
+    },
   },
 };

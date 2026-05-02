@@ -146,6 +146,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 import { Icon } from '@iconify/react';
 import { useProductSearchParams } from './hooks/useProductSearchParams';
+import { FeaturesPage } from './pages/FeaturesPage';
 import { uploadImage, STORAGE_PATHS } from './lib/storage';
 
 // --- Contexts ---
@@ -871,6 +872,13 @@ const Navbar = ({ onNavigate, currentPage }: { onNavigate: (page: string) => voi
             {t({ en: 'Orders', ar: 'الطلبات' })}
           </button>
         )}
+
+        <button
+          onClick={() => onNavigate('features')}
+          className={`text-sm font-medium hover:text-black transition-colors ${currentPage === 'features' ? 'text-black font-bold' : 'text-gray-500'}`}
+        >
+          {t({ en: 'For Merchants', ar: 'للتجار' })}
+        </button>
 
         {profile?.roles?.includes('admin') && (
           <button 
@@ -3068,11 +3076,13 @@ const DefaultAddressSection = ({ profile, t }: { profile: UserProfile, t: (ls: a
 
 const ProfilePage = ({ 
   onNavigate, 
-  setEditingPageId, 
+  openPageEditor,
+  openNewPageEditor,
   allPages 
 }: { 
   onNavigate: (page: string) => void,
-  setEditingPageId: (id: string | null) => void,
+  openPageEditor: (slug: string) => void,
+  openNewPageEditor: () => void,
   allPages: any[]
 }) => {
   const { user, profile, logout } = useContext(AuthContext);
@@ -3337,7 +3347,8 @@ const ProfilePage = ({
         {activeTab === 'admin' && (
           <AdminPanel 
             setCurrentPage={onNavigate} 
-            setEditingPageId={setEditingPageId} 
+            openPageEditor={openPageEditor}
+            openNewPageEditor={openNewPageEditor}
             allPages={allPages} 
           />
         )}
@@ -4588,8 +4599,8 @@ const RegionsManagement = () => {
   );
 };
 
-const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) => {
-  const { t, lang } = useContext(LanguageContext);
+const DeliveryMethodsManagement = ({ categories, showMatrixEditor = true }: { categories: Category[]; showMatrixEditor?: boolean }) => {
+  const { t } = useContext(LanguageContext);
   const { regions } = useRegions();
   const { deliveryMethods, addDeliveryMethod, updateDeliveryMethod, deleteDeliveryMethod, setDefaultMethod } = useDeliveryMethods();
   const [showAdd, setShowAdd] = useState(false);
@@ -4681,36 +4692,38 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-4">{t({ en: 'Price Matrix (Source to Destination)', ar: 'مصفوفة الأسعار (من المصدر إلى الوجهة)' })}</label>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="p-2 border-b text-left">{t({ en: 'From \\ To', ar: 'من \\ إلى' })}</th>
-                    {regions.map(r => <th key={r.id} className="p-2 border-b text-center">{r.name}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {regions.map(source => (
-                    <tr key={source.id}>
-                      <td className="p-2 border-b font-bold">{source.name}</td>
-                      {regions.map(dest => (
-                        <td key={dest.id} className="p-2 border-b text-center">
-                          <input 
-                            type="number" 
-                            value={newMethod.priceMatrix?.[source.id]?.[dest.id] || 0}
-                            onChange={(e) => updatePrice(source.id, dest.id, parseFloat(e.target.value))}
-                            className="w-20 px-2 py-1 bg-gray-50 rounded-lg text-center outline-none focus:ring-2 focus:ring-black"
-                          />
-                        </td>
-                      ))}
+          {showMatrixEditor && (
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-4">{t({ en: 'Price Matrix (Source to Destination)', ar: 'مصفوفة الأسعار (من المصدر إلى الوجهة)' })}</label>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="p-2 border-b text-left">{t({ en: 'From \\ To', ar: 'من \\ إلى' })}</th>
+                      {regions.map(r => <th key={r.id} className="p-2 border-b text-center">{r.name}</th>)}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {regions.map(source => (
+                      <tr key={source.id}>
+                        <td className="p-2 border-b font-bold">{source.name}</td>
+                        {regions.map(dest => (
+                          <td key={dest.id} className="p-2 border-b text-center">
+                            <input 
+                              type="number" 
+                              value={newMethod.priceMatrix?.[source.id]?.[dest.id] || 0}
+                              onChange={(e) => updatePrice(source.id, dest.id, parseFloat(e.target.value))}
+                              className="w-20 px-2 py-1 bg-gray-50 rounded-lg text-center outline-none focus:ring-2 focus:ring-black"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -4802,12 +4815,195 @@ const DeliveryMethodsManagement = ({ categories }: { categories: Category[] }) =
   );
 };
 
+const DeliveryMatrixRecordsManagement = () => {
+  const { t } = useContext(LanguageContext);
+  const { regions } = useRegions();
+  const { deliveryMethods, updateDeliveryMethod } = useDeliveryMethods();
+  const [selectedMethodId, setSelectedMethodId] = useState('');
+  const [sourceRegionId, setSourceRegionId] = useState('');
+  const [destinationRegionId, setDestinationRegionId] = useState('');
+  const [price, setPrice] = useState<number>(0);
+
+  useEffect(() => {
+    if (!selectedMethodId && deliveryMethods.length > 0) {
+      setSelectedMethodId(deliveryMethods[0].id);
+    }
+  }, [deliveryMethods, selectedMethodId]);
+
+  const selectedMethod = deliveryMethods.find(method => method.id === selectedMethodId);
+
+  const matrixRecords = useMemo(() => {
+    if (!selectedMethod) return [] as Array<{ fromId: string; toId: string; price: number }>;
+    return Object.entries(selectedMethod.priceMatrix || {}).flatMap(([fromId, destinations]) =>
+      Object.entries(destinations || {}).map(([toId, value]) => ({
+        fromId,
+        toId,
+        price: Number(value) || 0,
+      }))
+    );
+  }, [selectedMethod]);
+
+  const handleSaveRecord = async () => {
+    if (!selectedMethod || !sourceRegionId || !destinationRegionId) return;
+    const updatedMatrix = { ...(selectedMethod.priceMatrix || {}) };
+    if (!updatedMatrix[sourceRegionId]) updatedMatrix[sourceRegionId] = {};
+    updatedMatrix[sourceRegionId][destinationRegionId] = Number(price) || 0;
+    await updateDeliveryMethod(selectedMethod.id, { priceMatrix: updatedMatrix });
+    setSourceRegionId('');
+    setDestinationRegionId('');
+    setPrice(0);
+  };
+
+  const handleDeleteRecord = async (fromId: string, toId: string) => {
+    if (!selectedMethod) return;
+    const updatedMatrix = { ...(selectedMethod.priceMatrix || {}) };
+    if (!updatedMatrix[fromId]) return;
+
+    delete updatedMatrix[fromId][toId];
+    if (Object.keys(updatedMatrix[fromId]).length === 0) {
+      delete updatedMatrix[fromId];
+    }
+
+    await updateDeliveryMethod(selectedMethod.id, { priceMatrix: updatedMatrix });
+  };
+
+  const getRegionName = (regionId: string) => {
+    return regions.find(region => region.id === regionId)?.name || regionId;
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">{t({ en: 'Matrix Records', ar: 'سجلات المصفوفة' })}</h2>
+
+      <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+        <div>
+          <label className="block text-xs font-bold text-gray-400 uppercase mb-2">{t({ en: 'Delivery Method', ar: 'طريقة التوصيل' })}</label>
+          <select
+            value={selectedMethodId}
+            onChange={(e) => setSelectedMethodId(e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">{t({ en: 'Select Method', ar: 'اختر طريقة' })}</option>
+            {deliveryMethods.map(method => (
+              <option key={method.id} value={method.id}>{method.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <select
+            value={sourceRegionId}
+            onChange={(e) => setSourceRegionId(e.target.value)}
+            className="px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">{t({ en: 'From', ar: 'من' })}</option>
+            {regions.map(region => (
+              <option key={region.id} value={region.id}>{region.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={destinationRegionId}
+            onChange={(e) => setDestinationRegionId(e.target.value)}
+            className="px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value="">{t({ en: 'To', ar: 'إلى' })}</option>
+            {regions.map(region => (
+              <option key={region.id} value={region.id}>{region.name}</option>
+            ))}
+          </select>
+
+          <input
+            type="number"
+            value={price}
+            onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+            placeholder={t({ en: 'Price', ar: 'السعر' })}
+            className="px-4 py-3 bg-gray-50 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black"
+          />
+
+          <button
+            onClick={handleSaveRecord}
+            disabled={!selectedMethodId || !sourceRegionId || !destinationRegionId}
+            className="bg-black text-white px-4 py-3 rounded-2xl text-sm font-bold disabled:opacity-50"
+          >
+            {t({ en: 'Save Record', ar: 'حفظ السجل' })}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+        <h3 className="text-sm font-bold text-gray-400 uppercase mb-4">{t({ en: 'Simple Records', ar: 'سجلات بسيطة' })}</h3>
+        <div className="space-y-2">
+          {matrixRecords.length === 0 && (
+            <p className="text-sm text-gray-400">{t({ en: 'No records yet for this method.', ar: 'لا توجد سجلات لهذه الطريقة بعد.' })}</p>
+          )}
+          {matrixRecords.map((record) => (
+            <div key={`${record.fromId}_${record.toId}`} className="flex items-center justify-between gap-4 p-3 bg-gray-50 rounded-2xl">
+              <div className="text-sm font-medium">
+                {selectedMethod?.name || '-'}: {getRegionName(record.fromId)} {t({ en: 'to', ar: 'إلى' })} {getRegionName(record.toId)}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold">{record.price}</span>
+                <button
+                  onClick={() => handleDeleteRecord(record.fromId, record.toId)}
+                  className="p-2 hover:bg-red-50 rounded-full transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DeliveryAdminManagement = ({ categories }: { categories: Category[] }) => {
+  const { t } = useContext(LanguageContext);
+  const [deliveryTab, setDeliveryTab] = useState<'methods' | 'regions' | 'matrix'>('methods');
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-4">
+        <button
+          onClick={() => setDeliveryTab('methods')}
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${deliveryTab === 'methods' ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+        >
+          {t({ en: 'Methods', ar: 'الطرق' })}
+        </button>
+        <button
+          onClick={() => setDeliveryTab('regions')}
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${deliveryTab === 'regions' ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+        >
+          {t({ en: 'Regions', ar: 'المناطق' })}
+        </button>
+        <button
+          onClick={() => setDeliveryTab('matrix')}
+          className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${deliveryTab === 'matrix' ? 'bg-black text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
+        >
+          {t({ en: 'Matrix Records', ar: 'سجلات المصفوفة' })}
+        </button>
+      </div>
+
+      {deliveryTab === 'methods' && <DeliveryMethodsManagement categories={categories} showMatrixEditor={false} />}
+      {deliveryTab === 'regions' && <RegionsManagement />}
+      {deliveryTab === 'matrix' && <DeliveryMatrixRecordsManagement />}
+    </div>
+  );
+};
+
 const PageEditor = ({ pageId, onClose }: { pageId: string, onClose: () => void }) => {
   const { t, lang: appLang } = useContext(LanguageContext);
   const [editLang, setEditLang] = useState<'en' | 'ar'>(appLang);
   const [fullData, setFullData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const isManualFeaturesContent = (pageData: any) => {
+    if (!pageData || typeof pageData !== 'object') return false;
+    return Boolean(pageData?.root?.props?.__manualFeaturesPage);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -4829,11 +5025,24 @@ const PageEditor = ({ pageId, onClose }: { pageId: string, onClose: () => void }
   const handleSave = async (data: any) => {
     setSaving(true);
     try {
+      const nextData = pageId === 'features'
+        ? {
+            ...data,
+            root: {
+              ...(data?.root && typeof data.root === 'object' ? data.root : {}),
+              props: {
+                ...(data?.root?.props && typeof data.root.props === 'object' ? data.root.props : {}),
+                __manualFeaturesPage: true,
+              },
+            },
+          }
+        : data;
+
       await setDoc(doc(db, 'pages', pageId), {
         id: pageId,
         body: {
           ...fullData,
-          [editLang]: data
+          [editLang]: nextData
         },
         updatedAt: serverTimestamp()
       }, { merge: true });
@@ -4845,9 +5054,44 @@ const PageEditor = ({ pageId, onClose }: { pageId: string, onClose: () => void }
   };
 
   const currentContent = useMemo(() => {
-    if (!fullData) return { content: [], root: {} };
-    return fullData[editLang] || { content: [], root: {} };
-  }, [fullData, editLang]);
+    const empty = { content: [], root: { props: {} } };
+    if (!fullData) return empty;
+
+    const raw = fullData[editLang] || empty;
+    if (pageId === 'features' && !isManualFeaturesContent(raw)) {
+      return empty;
+    }
+    const rawContent = Array.isArray(raw?.content) ? raw.content : [];
+
+    let hasHeroOnFeatures = false;
+
+    const normalizedContent = rawContent
+      .filter((block: any) => block && typeof block === 'object' && typeof block.type === 'string')
+      .filter((block: any) => {
+        if (pageId !== 'features' || block.type !== 'Hero') return true;
+        if (hasHeroOnFeatures) return false;
+        hasHeroOnFeatures = true;
+        return true;
+      })
+      .map((block: any) => {
+        const props = (block.props && typeof block.props === 'object') ? { ...block.props } : {};
+
+        if (block.type === 'Hero') {
+          props.actions = Array.isArray(props.actions) ? props.actions.filter(Boolean) : [];
+        }
+
+        return {
+          ...block,
+          props,
+        };
+      });
+
+    return {
+      ...raw,
+      content: normalizedContent,
+      root: raw?.root && typeof raw.root === 'object' ? raw.root : { props: {} },
+    };
+  }, [fullData, editLang, pageId]);
 
   if (loading) {
     return (
@@ -4930,11 +5174,13 @@ const PageEditor = ({ pageId, onClose }: { pageId: string, onClose: () => void }
 
 const AdminPanel = ({ 
   setCurrentPage, 
-  setEditingPageId, 
+  openPageEditor,
+  openNewPageEditor,
   allPages 
 }: { 
   setCurrentPage: (p: string) => void, 
-  setEditingPageId: (p: string | null) => void, 
+  openPageEditor: (slug: string) => void,
+  openNewPageEditor: () => void,
   allPages: any[] 
 }) => {
   const { t } = useContext(LanguageContext);
@@ -4954,6 +5200,12 @@ const AdminPanel = ({
     newParams.set('subtab', tab);
     setSearchParams(newParams, { replace: true });
   };
+
+  useEffect(() => {
+    if (activeSubTab === 'regions' || activeSubTab === 'delivery-methods') {
+      setActiveSubTab('delivery');
+    }
+  }, [activeSubTab]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [adminMessage, setAdminMessage] = useState('');
@@ -5808,7 +6060,7 @@ const AdminPanel = ({
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pt-2">
       <div className="flex flex-nowrap md:flex-wrap overflow-x-auto md:overflow-visible gap-2 md:gap-4 border-b border-gray-100 pb-4 no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth">
         {[
           { id: 'products', label: t({ en: 'Products', ar: 'المنتجات' }), icon: Package },
@@ -5818,8 +6070,7 @@ const AdminPanel = ({
           { id: 'drivers', label: t({ en: 'Drivers', ar: 'السائقين' }), icon: Car },
           { id: 'orders', label: t({ en: 'Orders', ar: 'الطلبات' }), icon: ShoppingBag },
           { id: 'users', label: t({ en: 'Users', ar: 'المستخدمين' }), icon: Users },
-          { id: 'regions', label: t({ en: 'Regions', ar: 'المناطق' }), icon: MapPin },
-          { id: 'delivery-methods', label: t({ en: 'Delivery', ar: 'التوصيل' }), icon: Truck },
+          { id: 'delivery', label: t({ en: 'Delivery', ar: 'التوصيل' }), icon: Truck },
           { id: 'promotions', label: t({ en: 'Promotions', ar: 'العروض' }), icon: Bell },
           { id: 'pages', label: t({ en: 'Pages', ar: 'الصفحات' }), icon: FileText },
           { id: 'app-settings', label: t({ en: 'App Settings', ar: 'إعدادات التطبيق' }), icon: Settings }
@@ -6647,6 +6898,48 @@ const AdminPanel = ({
                 <Settings className="w-5 h-5 text-emerald-500" />
                 {t({ en: 'App Branding', ar: 'هوية التطبيق' })}
               </h3>
+              <div className="space-y-4 mb-6">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'App Logo', ar: 'شعار التطبيق' })}</label>
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border border-gray-100 shadow-sm flex items-center justify-center bg-gray-50 shrink-0">
+                    {appSettings.logoUrl ? (
+                      <img src={appSettings.logoUrl} alt="App Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white font-bold text-3xl italic rounded-2xl" style={{ backgroundColor: config.theme.primary }}>
+                        {t(appSettings.appName || config.name).charAt(0)}
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex-1 cursor-pointer p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 hover:border-black transition-all flex items-center justify-center gap-2">
+                    <Upload className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm font-bold text-gray-500">{t({ en: 'Upload Logo', ar: 'رفع الشعار' })}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const url = await uploadImage(file, `app-settings/logo_${Date.now()}_${file.name}`);
+                          await updateAppSettings({ logoUrl: url });
+                        } catch (err) {
+                          console.error('Logo upload failed:', err);
+                        }
+                      }}
+                    />
+                  </label>
+                  {appSettings.logoUrl && (
+                    <button
+                      onClick={() => updateAppSettings({ logoUrl: '' })}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                      title={t({ en: 'Remove logo', ar: 'إزالة الشعار' })}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t({ en: 'App Name (English)', ar: 'اسم التطبيق (إنجليزي)' })}</label>
@@ -6980,13 +7273,7 @@ const AdminPanel = ({
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">{t({ en: 'Page Management', ar: 'إدارة الصفحات' })}</h2>
             <button 
-              onClick={() => {
-                const slug = prompt(t({ en: 'Enter page slug (e.g. about-us):', ar: 'أدخل معرف الصفحة (مثلاً about-us):' }));
-                if (slug) {
-                  setEditingPageId(slug);
-                  setCurrentPage('admin-page-editor');
-                }
-              }}
+              onClick={openNewPageEditor}
               className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
@@ -6995,7 +7282,7 @@ const AdminPanel = ({
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {['home', 'shop', 'contact', 'policy'].map(id => (
+            {['home', 'shop', 'contact', 'policy', 'features'].map(id => (
               <div key={id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm group hover:shadow-xl transition-all relative">
                 <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
                   <FileText className="w-6 h-6 text-gray-400" />
@@ -7003,15 +7290,13 @@ const AdminPanel = ({
                 <h3 className="text-xl font-bold uppercase tracking-tight mb-2">
                   {id === 'home' ? t({ en: 'Home Page', ar: 'الصفحة الرئيسية' }) : 
                    id === 'shop' ? t({ en: 'Shop Page', ar: 'صفحة المتجر' }) : 
-                   id === 'contact' ? t({ en: 'Contact Us', ar: 'اتصل بنا' }) : 
+                   id === 'contact' ? t({ en: 'Contact Us', ar: 'اتصل بنا' }) :
+                   id === 'features' ? t({ en: 'Features Page', ar: 'صفحة المميزات' }) :
                    t({ en: 'Policies', ar: 'السياسات' })}
                 </h3>
                 <p className="text-xs font-black text-gray-300 uppercase tracking-widest mb-6">System Page</p>
                 <button 
-                  onClick={() => {
-                    setEditingPageId(id);
-                    setCurrentPage('admin-page-editor');
-                  }}
+                  onClick={() => openPageEditor(id)}
                   className="w-full py-4 bg-gray-100 text-black rounded-2xl font-bold hover:bg-black hover:text-white transition-all text-sm"
                 >
                   {t({ en: 'Edit Full Screen', ar: 'تعديل ملء الشاشة' })}
@@ -7019,7 +7304,7 @@ const AdminPanel = ({
               </div>
             ))}
             
-            {allPages.filter(p => !['home', 'contact', 'policy'].includes(p.id)).map(page => (
+            {allPages.filter(p => !['home', 'contact', 'policy', 'features'].includes(p.id)).map(page => (
               <div key={page.id} className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm group hover:shadow-xl transition-all relative">
                 <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6">
                   <Globe className="w-6 h-6 text-emerald-500" />
@@ -7029,10 +7314,7 @@ const AdminPanel = ({
                 
                 <div className="flex gap-4">
                   <button 
-                    onClick={() => {
-                      setEditingPageId(page.id);
-                      setCurrentPage('admin-page-editor');
-                    }}
+                    onClick={() => openPageEditor(page.id)}
                     className="flex-1 py-4 bg-gray-100 text-black rounded-2xl font-bold hover:bg-black hover:text-white transition-all text-sm"
                   >
                     {t({ en: 'Edit', ar: 'تعديل' })}
@@ -7058,8 +7340,7 @@ const AdminPanel = ({
         </div>
       )}
 
-      {activeSubTab === 'regions' && <RegionsManagement />}
-      {activeSubTab === 'delivery-methods' && <DeliveryMethodsManagement categories={categories} />}
+      {activeSubTab === 'delivery' && <DeliveryAdminManagement categories={categories} />}
 
       {activeSubTab === 'drivers' && (
         <div className="space-y-6">
@@ -7728,6 +8009,39 @@ const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: 
   const [content, setContent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const isManualFeaturesContent = (pageData: any) => {
+    if (!pageData || typeof pageData !== 'object') return false;
+    return Boolean(pageData?.root?.props?.__manualFeaturesPage);
+  };
+
+  const normalizePageContent = (rawPageContent: any) => {
+    const base = rawPageContent && typeof rawPageContent === 'object' ? rawPageContent : { content: [], root: { props: {} } };
+    const rawContent = Array.isArray(base.content) ? base.content : [];
+    let hasHeroOnFeatures = false;
+
+    const normalizedContent = rawContent
+      .filter((block: any) => block && typeof block === 'object' && typeof block.type === 'string')
+      .filter((block: any) => {
+        if (pageId !== 'features' || block.type !== 'Hero') return true;
+        if (hasHeroOnFeatures) return false;
+        hasHeroOnFeatures = true;
+        return true;
+      })
+      .map((block: any) => {
+        const props = (block.props && typeof block.props === 'object') ? { ...block.props } : {};
+        if (block.type === 'Hero') {
+          props.actions = Array.isArray(props.actions) ? props.actions.filter(Boolean) : [];
+        }
+        return { ...block, props };
+      });
+
+    return {
+      ...base,
+      content: normalizedContent,
+      root: base.root && typeof base.root === 'object' ? base.root : { props: {} },
+    };
+  };
+
   useEffect(() => {
     const fetchPage = async () => {
       try {
@@ -7738,7 +8052,11 @@ const PuckPage = ({ pageId, onNavigate }: { pageId: string, onNavigate?: (page: 
           const body = data.body || {};
           // Fallback if current language doesn't have content but the other does
           const pageContent = body[lang] || body[lang === 'en' ? 'ar' : 'en'];
-          setContent(pageContent);
+          if (pageId === 'features' && !isManualFeaturesContent(pageContent)) {
+            setContent(null);
+            return;
+          }
+          setContent(normalizePageContent(pageContent));
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, `pages/${pageId}`);
@@ -8163,6 +8481,35 @@ const PuckDynamicPage = ({ onNavigate }: { onNavigate: (p: string) => void }) =>
   );
 };
 
+const AdminNewPageRoute = () => {
+  const navigate = useNavigate();
+  const { t } = useContext(LanguageContext);
+  const [handled, setHandled] = useState(false);
+
+  useEffect(() => {
+    if (handled) return;
+    setHandled(true);
+
+    const raw = prompt(t({ en: 'Enter page slug (e.g. about-us):', ar: 'أدخل معرف الصفحة (مثلاً about-us):' })) || '';
+    const normalized = raw.trim().toLowerCase().replace(/\s+/g, '-');
+
+    if (normalized) {
+      navigate(`/admin/pages/${encodeURIComponent(normalized)}`, { replace: true });
+    } else {
+      navigate('/admin', { replace: true });
+    }
+  }, [handled, navigate, t]);
+
+  return null;
+};
+
+const AdminPageEditorRoute = ({ onClose }: { onClose: () => void }) => {
+  const { pageSlug } = useParams();
+  if (!pageSlug) return <Navigate to="/admin" replace />;
+  const slug = decodeURIComponent(pageSlug);
+  return <PageEditor pageId={slug} onClose={onClose} />;
+};
+
 function MainApp() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -8185,7 +8532,7 @@ function MainApp() {
     if (path === '/wishlist') return 'wishlist';
     if (path === '/profile') return 'profile';
     if (path === '/admin') return 'admin';
-    if (path === '/admin-page-editor') return 'admin-page-editor';
+    if (path === '/admin/pages/new' || path.startsWith('/admin/pages/')) return 'admin-page-editor';
     if (path === '/contact') return 'contact';
     if (path === '/policy') return 'policy';
     if (path.startsWith('/p/')) return 'p/' + path.split('/')[2];
@@ -8200,7 +8547,6 @@ function MainApp() {
     else if (page.startsWith('p/')) navigate('/p/' + (page.split('/')[1] || page.split('/')[2] || page.split('/')[0]));
     else navigate('/' + page);
   };
-  const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [viewingPageId, setViewingPageId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -8701,7 +9047,7 @@ function MainApp() {
                 />
               )}
               
-              <main className={`${location.pathname !== '/admin-page-editor' ? 'pb-20' : ''}`}>
+              <main className={`${!location.pathname.startsWith('/admin/pages/') ? 'pb-20' : ''}`}>
                 <AnimatePresence mode="wait">
                   {selectedProduct && (
                     <Drawer open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
@@ -8745,12 +9091,14 @@ function MainApp() {
                   <Route path="/checkout" element={<CheckoutPage onComplete={() => navigate('/orders')} />} />
                   <Route path="/orders" element={<OrdersPage />} />
                   <Route path="/wishlist" element={<WishlistPage onSelectProduct={setSelectedProduct} />} />
-                  <Route path="/profile" element={<ProfilePage onNavigate={setCurrentPage} setEditingPageId={setEditingPageId} allPages={allPages} />} />
+                  <Route path="/profile" element={<ProfilePage onNavigate={setCurrentPage} openPageEditor={(slug) => navigate(`/admin/pages/${encodeURIComponent(slug)}`)} openNewPageEditor={() => navigate('/admin/pages/new')} allPages={allPages} />} />
                   <Route path="/contact" element={<div className="max-w-4xl mx-auto px-6"><PuckPage pageId="contact" onNavigate={setCurrentPage} /></div>} />
                   <Route path="/policy" element={<div className="max-w-4xl mx-auto px-6"><PuckPage pageId="policy" onNavigate={setCurrentPage} /></div>} />
                   <Route path="/p/:pageId" element={<PuckDynamicPage onNavigate={setCurrentPage} />} />
-                  <Route path="/admin" element={profile?.roles?.includes('admin') ? <AdminPanel setCurrentPage={setCurrentPage} setEditingPageId={setEditingPageId} allPages={allPages} /> : <Navigate to="/" />} />
-                  <Route path="/admin-page-editor" element={profile?.roles?.includes('admin') && editingPageId ? <PageEditor pageId={editingPageId} onClose={() => navigate('/admin')} /> : <Navigate to="/admin" />} />
+                  <Route path="/admin" element={profile?.roles?.includes('admin') ? <AdminPanel setCurrentPage={setCurrentPage} openPageEditor={(slug) => navigate(`/admin/pages/${encodeURIComponent(slug)}`)} openNewPageEditor={() => navigate('/admin/pages/new')} allPages={allPages} /> : <Navigate to="/" />} />
+                  <Route path="/features" element={<div className="max-w-7xl mx-auto px-4 md:px-6"><PuckPage pageId="features" onNavigate={setCurrentPage} /></div>} />
+                  <Route path="/admin/pages/new" element={profile?.roles?.includes('admin') ? <AdminNewPageRoute /> : <Navigate to="/" />} />
+                  <Route path="/admin/pages/:pageSlug" element={profile?.roles?.includes('admin') ? <AdminPageEditorRoute onClose={() => navigate('/admin')} /> : <Navigate to="/" />} />
                 </Routes>
 
                 {/* Simple Footer */}

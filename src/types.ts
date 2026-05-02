@@ -223,6 +223,7 @@ export interface AppSettings {
   supportedAddressModes: ('normal' | 'map')[];
   appName?: LocalizedString;
   appDescription?: LocalizedString;
+  logoUrl?: string;
   socialLinks?: {
     instagram?: string;
     twitter?: string;
